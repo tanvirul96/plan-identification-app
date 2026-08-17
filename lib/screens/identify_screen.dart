@@ -1,11 +1,24 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/rag_service.dart';
 import '../services/onnx_service.dart';
+import '../widgets/neu_widgets.dart';
+
+/// Custom scroll behavior that enables mouse drag on web/desktop.
+class _WebDragScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+      };
+}
 
 class IdentifyScreen extends StatefulWidget {
   final RagService ragService;
@@ -21,12 +34,16 @@ class IdentifyScreen extends StatefulWidget {
   State<IdentifyScreen> createState() => _IdentifyScreenState();
 }
 
-class _IdentifyScreenState extends State<IdentifyScreen> {
+class _IdentifyScreenState extends State<IdentifyScreen>
+    with AutomaticKeepAliveClientMixin {
   LocalPredictionResult? _efficientnetResult;
   LocalPredictionResult? _mobilenetResult;
   LocalPredictionResult? _inceptionResult;
   String _activeModelForRag = "EfficientNetV2";
   bool _showGradCamOverlay = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   final Map<String, bool> _expandedCards = {
     "EfficientNetV2-B2": false,
@@ -75,7 +92,6 @@ class _IdentifyScreenState extends State<IdentifyScreen> {
     });
 
     widget.onPlantIdentified(plantName);
-
     final report = await widget.ragService.generateRagReport(plantName);
 
     if (mounted) {
@@ -109,7 +125,6 @@ class _IdentifyScreenState extends State<IdentifyScreen> {
         });
 
         try {
-          // Run ONNX inference on EfficientNetV2, MobileNetV2, and InceptionV3
           final results = await _onnxService.predictAll(imageBytes);
 
           if (mounted) {
@@ -127,7 +142,6 @@ class _IdentifyScreenState extends State<IdentifyScreen> {
               } else {
                 activeResult = _mobilenetResult;
               }
-
               activeResult ??= _efficientnetResult ?? _mobilenetResult ?? _inceptionResult;
               _selectedPlantName = activeResult?.predictedSpecies;
               _ragReportText = null;
@@ -136,15 +150,13 @@ class _IdentifyScreenState extends State<IdentifyScreen> {
           }
         } catch (inferenceError) {
           if (mounted) {
-            setState(() {
-              _isPredicting = false;
-            });
+            setState(() => _isPredicting = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 duration: const Duration(seconds: 8),
                 backgroundColor: Colors.red.shade800,
                 content: Text(
-                  "ONNX inference failed: $inferenceError",
+                  "Model inference failed: $inferenceError",
                   style: const TextStyle(color: Colors.white),
                 ),
               ),
@@ -155,18 +167,12 @@ class _IdentifyScreenState extends State<IdentifyScreen> {
     } on MissingPluginException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              "Please perform a full app restart ('flutter run') to register native camera/gallery channels.",
-            ),
-          ),
+          const SnackBar(content: Text("Please perform a full app restart to register camera/gallery channels.")),
         );
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _isPredicting = false;
-        });
+        setState(() => _isPredicting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error selecting image: $e")),
         );
@@ -180,8 +186,9 @@ class _IdentifyScreenState extends State<IdentifyScreen> {
     return _mobilenetResult;
   }
 
-  Widget _buildHorizontalModelCard({
-    required ThemeData theme,
+  // ─── Neumorphic Model Card ─────────────────────────────────────────────
+
+  Widget _buildModelCard({
     required String modelTitle,
     required LocalPredictionResult? result,
     required bool isActive,
@@ -189,637 +196,590 @@ class _IdentifyScreenState extends State<IdentifyScreen> {
     bool isTopWinner = false,
   }) {
     final bool isExpanded = _expandedCards[modelTitle] ?? false;
+    final primary = NeuTheme.primaryColor(context);
+    final onSurf = NeuTheme.onSurface(context);
+    final subtle = NeuTheme.subtleText(context);
 
-    return Container(
-      width: 290,
-      margin: const EdgeInsets.only(right: 12),
-      child: Card(
-        elevation: isActive ? 4 : 1,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: isActive
-                ? (isTopWinner ? Colors.green.shade600 : theme.colorScheme.primary)
-                : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            width: isActive ? 2.5 : 1,
-          ),
-        ),
-        child: InkWell(
-          onTap: result != null ? onTapSelect : null,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header
-                Row(
-                  children: [
-                    Icon(
-                      isTopWinner ? Icons.emoji_events : Icons.smart_toy,
-                      color: isTopWinner
-                          ? Colors.amber.shade700
-                          : (isActive ? theme.colorScheme.primary : theme.colorScheme.outline),
-                      size: 22,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        modelTitle,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (isActive)
-                      Icon(
-                        Icons.check_circle,
-                        color: isTopWinner ? Colors.green.shade600 : theme.colorScheme.primary,
-                        size: 20,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                if (result != null) ...[
-                  // Species & Confidence
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Top Prediction",
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            Text(
-                              result.predictedSpecies,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: isTopWinner ? Colors.green.shade800 : theme.colorScheme.primary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isTopWinner ? Colors.green.shade600 : theme.colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          "${result.confidence.toStringAsFixed(1)}%",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: isTopWinner ? Colors.white : theme.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
+    return GestureDetector(
+      onTap: result != null ? onTapSelect : null,
+      child: NeuContainer(
+        isPressed: isActive,
+        margin: const EdgeInsets.only(right: 14),
+        padding: const EdgeInsets.all(16),
+        borderRadius: 22,
+        blurRadius: isActive ? 12 : 16,
+        offset: const Offset(5, 5),
+        child: SizedBox(
+          width: 270,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Icon(
+                    isTopWinner ? Icons.emoji_events : Icons.smart_toy_outlined,
+                    color: isTopWinner ? Colors.amber.shade700 : (isActive ? primary : subtle),
+                    size: 22,
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      modelTitle,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: onSurf,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (isActive)
+                    Icon(Icons.check_circle, color: primary, size: 20),
+                ],
+              ),
+              const SizedBox(height: 14),
 
-                  // Dropdown button to toggle Top 3 Candidates
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        _expandedCards[modelTitle] = !isExpanded;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              if (result != null) ...[
+                // Species & Confidence
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text("Top Prediction", style: TextStyle(fontSize: 11, color: subtle)),
+                          const SizedBox(height: 2),
                           Text(
-                            "Top 3 Candidates",
-                            style: theme.textTheme.labelMedium?.copyWith(
+                            result.predictedSpecies,
+                            style: TextStyle(
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.onSurfaceVariant,
+                              color: isTopWinner ? const Color(0xFF2E7D32) : primary,
                             ),
-                          ),
-                          Icon(
-                            isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                            size: 20,
-                            color: theme.colorScheme.onSurfaceVariant,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
+                    NeuContainer(
+                      isPressed: true,
+                      borderRadius: 20,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      blurRadius: 6,
+                      offset: const Offset(2, 2),
+                      child: Text(
+                        "${result.confidence.toStringAsFixed(1)}%",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Top 3 Toggle
+                GestureDetector(
+                  onTap: () => setState(() => _expandedCards[modelTitle] = !isExpanded),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Top 3 Candidates",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: subtle),
+                      ),
+                      Icon(
+                        isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                        size: 20,
+                        color: subtle,
+                      ),
+                    ],
                   ),
+                ),
 
-                  // Expandable Top 3 Breakdown
-                  if (isExpanded) ...[
-                    const SizedBox(height: 6),
-                    ...result.top3Candidates.asMap().entries.map((entry) {
-                      int idx = entry.key;
-                      var cand = entry.value;
-                      String rankEmoji = idx == 0 ? "🥇" : (idx == 1 ? "🥈" : "🥉");
-                      double conf = (cand['confidence'] as num).toDouble();
+                if (isExpanded) ...[
+                  const SizedBox(height: 8),
+                  ...result.top3Candidates.asMap().entries.map((entry) {
+                    int idx = entry.key;
+                    var cand = entry.value;
+                    String rankEmoji = idx == 0 ? "🥇" : (idx == 1 ? "🥈" : "🥉");
+                    double conf = (cand['confidence'] as num).toDouble();
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 6.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    "$rankEmoji ${cand['species']}",
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      fontWeight: idx == 0 ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  "$rankEmoji ${cand['species']}",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: idx == 0 ? FontWeight.bold : FontWeight.normal,
+                                    color: onSurf,
                                   ),
-                                ),
-                                Text(
-                                  "${conf.toStringAsFixed(1)}%",
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: (conf / 100).clamp(0.0, 1.0),
-                                minHeight: 4,
-                                backgroundColor: Colors.grey.withValues(alpha: 0.15),
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  idx == 0
-                                      ? (isTopWinner ? Colors.green.shade600 : theme.colorScheme.primary)
-                                      : Colors.grey.shade400,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              Text(
+                                "${conf.toStringAsFixed(1)}%",
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: subtle),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: (conf / 100).clamp(0.0, 1.0),
+                              minHeight: 4,
+                              backgroundColor: NeuTheme.shadowDark(context).withValues(alpha: 0.15),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                idx == 0 ? primary : subtle.withValues(alpha: 0.4),
+                              ),
                             ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
                 ],
               ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final activeResult = _currentActiveResult;
-    final camGrid = activeResult?.camGrid;
+  // ─── Image Card ────────────────────────────────────────────────────────
+
+  Widget _buildImageCard(List<List<double>>? camGrid) {
+    final primary = NeuTheme.primaryColor(context);
+    final onSurf = NeuTheme.onSurface(context);
     final hasSelection = _pickedImageFile != null || _selectedPlantName != null;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+    return NeuContainer(
+      padding: const EdgeInsets.all(20),
+      borderRadius: 24,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Banner Card
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 14.0),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.colorScheme.primaryContainer,
-                  theme.colorScheme.surface,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  "Capture / Select Leaf",
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: onSurf),
+                ),
               ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: theme.colorScheme.primary.withValues(alpha: 0.2),
+              if (hasSelection)
+                NeuIconButton(
+                  icon: Icons.refresh,
+                  onPressed: _clearAll,
+                  iconColor: Colors.redAccent,
+                  tooltip: "Clear Screen",
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: NeuButton(
+                  onPressed: () => _pickLeafImage(ImageSource.camera),
+                  borderRadius: 16,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.camera_alt, size: 20, color: primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Take Photo",
+                        style: TextStyle(fontWeight: FontWeight.w600, color: onSurf, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: NeuButton(
+                  onPressed: () => _pickLeafImage(ImageSource.gallery),
+                  borderRadius: 16,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.photo_library, size: 20, color: primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Gallery",
+                        style: TextStyle(fontWeight: FontWeight.w600, color: onSurf, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          if (_pickedImageFile != null) ...[
+            const SizedBox(height: 18),
+
+            // Image + Grad-CAM Overlay
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  kIsWeb
+                      ? Image.network(
+                          _pickedImageFile!.path,
+                          height: 260,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        )
+                      : Image.file(
+                          File(_pickedImageFile!.path),
+                          height: 260,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                  if (_showGradCamOverlay && camGrid != null)
+                    Positioned.fill(
+                      child: CustomPaint(painter: GradCamHeatmapPainter(grid: camGrid)),
+                    ),
+                ],
               ),
             ),
+            const SizedBox(height: 14),
+
+            // Grad-CAM Toggle
+            NeuButton(
+              onPressed: camGrid != null
+                  ? () => setState(() => _showGradCamOverlay = !_showGradCamOverlay)
+                  : null,
+              borderRadius: 14,
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              color: _showGradCamOverlay
+                  ? Colors.deepOrange.shade100.withValues(alpha: 0.3)
+                  : null,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _showGradCamOverlay ? Icons.visibility_off : Icons.remove_red_eye,
+                      size: 18,
+                      color: _showGradCamOverlay ? Colors.deepOrange.shade700 : primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _showGradCamOverlay
+                          ? "Hide Grad-CAM Heatmap"
+                          : "Show Grad-CAM ($_activeModelForRag)",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: _showGradCamOverlay ? Colors.deepOrange.shade700 : NeuTheme.onSurface(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ─── Predictions Section ───────────────────────────────────────────────
+
+  Widget _buildPredictionResultsSection() {
+    final primary = NeuTheme.primaryColor(context);
+    final onSurf = NeuTheme.onSurface(context);
+    final subtle = NeuTheme.subtleText(context);
+
+    if (_isPredicting) {
+      return NeuContainer(
+        padding: const EdgeInsets.all(28),
+        borderRadius: 24,
+        child: Column(
+          children: [
+            CircularProgressIndicator(color: primary),
+            const SizedBox(height: 14),
+            Text(
+              "Running model inference & feature extraction...",
+              style: TextStyle(color: subtle, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_efficientnetResult == null && _mobilenetResult == null && _inceptionResult == null) {
+      return NeuContainer(
+        padding: const EdgeInsets.all(28),
+        borderRadius: 24,
+        child: Column(
+          children: [
+            Icon(Icons.image_search, size: 48, color: primary.withValues(alpha: 0.5)),
+            const SizedBox(height: 14),
+            Text(
+              "No Leaf Selected",
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: onSurf),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Capture or select a leaf image to compare AI model predictions and Grad-CAM attention heatmaps.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: subtle, height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          "⚖️ Model Predictions",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: primary),
+        ),
+        const SizedBox(height: 14),
+
+        // Horizontal Model Cards — scrollable with mouse drag on web
+        ScrollConfiguration(
+          behavior: _WebDragScrollBehavior(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                _buildModelCard(
+                  modelTitle: "EfficientNetV2-B2",
+                  result: _efficientnetResult,
+                  isActive: _activeModelForRag == "EfficientNetV2",
+                  isTopWinner: true,
+                  onTapSelect: () => setState(() {
+                    _activeModelForRag = "EfficientNetV2";
+                    _selectedPlantName = _efficientnetResult?.predictedSpecies;
+                    _ragReportText = null;
+                    _isLoadingReport = false;
+                  }),
+                ),
+                _buildModelCard(
+                  modelTitle: "MobileNetV2",
+                  result: _mobilenetResult,
+                  isActive: _activeModelForRag == "MobileNetV2",
+                  onTapSelect: () => setState(() {
+                    _activeModelForRag = "MobileNetV2";
+                    _selectedPlantName = _mobilenetResult?.predictedSpecies;
+                    _ragReportText = null;
+                    _isLoadingReport = false;
+                  }),
+                ),
+                _buildModelCard(
+                  modelTitle: "InceptionV3",
+                  result: _inceptionResult,
+                  isActive: _activeModelForRag == "InceptionV3",
+                  onTapSelect: () => setState(() {
+                    _activeModelForRag = "InceptionV3";
+                    _selectedPlantName = _inceptionResult?.predictedSpecies;
+                    _ragReportText = null;
+                    _isLoadingReport = false;
+                  }),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+
+        // Report Section
+        NeuContainer(
+          padding: const EdgeInsets.all(18),
+          borderRadius: 22,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.local_pharmacy, color: primary, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Selected: ${_selectedPlantName ?? 'Unknown'}",
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: primary),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              NeuButton(
+                onPressed: _isLoadingReport ? null : _generateReportForSelectedPlant,
+                borderRadius: 14,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.menu_book, size: 18, color: primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      _ragReportText != null
+                          ? "Re-Generate Report"
+                          : "📄 Generate Pharmacological Report",
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: onSurf),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+
+        // Loading or Report Display
+        if (_isLoadingReport)
+          NeuContainer(
+            isPressed: true,
+            padding: const EdgeInsets.all(24),
+            borderRadius: 20,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.energy_savings_leaf,
-                  color: theme.colorScheme.primary,
-                  size: 26,
+                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: primary)),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    "Generating report for $_selectedPlantName...",
+                    style: TextStyle(color: subtle, fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  "Medicinal Leaf Identifier",
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onPrimaryContainer,
+              ],
+            ),
+          )
+        else if (_ragReportText != null)
+          NeuContainer(
+            padding: const EdgeInsets.all(22),
+            borderRadius: 22,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.verified, color: primary, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Pharmacological Profile: $_selectedPlantName",
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: primary),
+                      ),
+                    ),
+                  ],
+                ),
+                Divider(height: 24, color: NeuTheme.shadowDark(context).withValues(alpha: 0.2)),
+                MarkdownBody(
+                  data: _ragReportText!,
+                  selectable: true,
+                  styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                    p: TextStyle(height: 1.55, fontSize: 14, color: onSurf),
+                    h1: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: primary),
+                    h2: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: primary),
+                    h3: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: primary),
+                    strong: TextStyle(fontWeight: FontWeight.bold, color: onSurf),
+                    listBullet: TextStyle(fontWeight: FontWeight.bold, color: primary),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+      ],
+    );
+  }
 
-          // Image Selection & Preview Section
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "Capture / Select Leaf Specimen",
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final activeResult = _currentActiveResult;
+    final camGrid = activeResult?.camGrid;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTwoColumn = screenWidth >= 950;
+    final primary = NeuTheme.primaryColor(context);
+    final onSurf = NeuTheme.onSurface(context);
 
-                      // Clear Screen Button
-                      if (hasSelection)
-                        IconButton.filledTonal(
-                          onPressed: _clearAll,
-                          icon: const Icon(Icons.refresh, size: 20),
-                          color: Colors.red.shade700,
-                          tooltip: "Clear Screen",
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Take Photo & Pick Gallery Buttons in the SAME ROW
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _pickLeafImage(ImageSource.camera),
-                          icon: const Icon(Icons.camera_alt, size: 20),
-                          label: const Text("Take Photo"),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _pickLeafImage(ImageSource.gallery),
-                          icon: const Icon(Icons.photo_library, size: 20),
-                          label: const Text("Pick Gallery"),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  if (_pickedImageFile != null) ...[
-                    const SizedBox(height: 16),
-
-                    // Stack for Leaf Image + Smooth Grad-CAM Heatmap Overlay
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          kIsWeb
-                              ? Image.network(
-                                  _pickedImageFile!.path,
-                                  height: 240,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                )
-                              : Image.file(
-                                  File(_pickedImageFile!.path),
-                                  height: 240,
-                                  width: double.infinity,
-                                  fit: BoxFit.cover,
-                                ),
-
-                          // Grad-CAM Smooth Heatmap Overlay
-                          if (_showGradCamOverlay && camGrid != null)
-                            Positioned.fill(
-                              child: CustomPaint(
-                                painter: GradCamHeatmapPainter(grid: camGrid),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Show / Hide Grad-CAM Toggle Button
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: camGrid != null
-                            ? () => setState(() => _showGradCamOverlay = !_showGradCamOverlay)
-                            : null,
-                        icon: Icon(
-                          _showGradCamOverlay ? Icons.visibility_off : Icons.remove_red_eye,
-                        ),
-                        label: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            _showGradCamOverlay
-                                ? "Hide Grad-CAM Heatmap"
-                                : "Show Grad-CAM Heatmap ($_activeModelForRag)",
-                          ),
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _showGradCamOverlay
-                              ? Colors.deepOrange.shade700
-                              : theme.colorScheme.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Placeholder when no image is picked
-          if (_pickedImageFile == null && _selectedPlantName == null)
-            Card(
-              elevation: 1,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1200),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Banner
+              NeuContainer(
+                isPressed: true,
+                borderRadius: 22,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                blurRadius: 10,
+                offset: const Offset(3, 3),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.image_search,
-                      size: 48,
-                      color: theme.colorScheme.primary.withValues(alpha: 0.6),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "No Leaf Selected",
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      "Take a photo or select a gallery leaf image to compare predictions and visualize smooth Grad-CAM attention heatmaps.",
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    Icon(Icons.energy_savings_leaf, color: primary, size: 24),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        "Medicinal Leaf Identifier & AI Pharmacologist",
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: onSurf),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
+              const SizedBox(height: 20),
 
-          if (_isPredicting)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24.0),
-                child: Column(
+              // 2-Column (wide) or Single-Column (mobile)
+              if (isTwoColumn)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 12),
-                    Text("Executing ONNX model inference..."),
+                    Expanded(flex: 5, child: _buildImageCard(camGrid)),
+                    const SizedBox(width: 18),
+                    Expanded(flex: 7, child: _buildPredictionResultsSection()),
                   ],
-                ),
-              ),
-            ),
-
-          // Horizontal Model Cards Layout
-          if (_efficientnetResult != null || _mobilenetResult != null || _inceptionResult != null) ...[
-            Text(
-              "⚖️ Model Predictions",
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Horizontal Scroll View for Model Cards
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: [
-                  // EfficientNetV2-B2 Card (Featured Winner)
-                  _buildHorizontalModelCard(
-                    theme: theme,
-                    modelTitle: "EfficientNetV2-B2",
-                    result: _efficientnetResult,
-                    isActive: _activeModelForRag == "EfficientNetV2",
-                    isTopWinner: true,
-                    onTapSelect: () {
-                      setState(() {
-                        _activeModelForRag = "EfficientNetV2";
-                        _selectedPlantName = _efficientnetResult?.predictedSpecies;
-                        _ragReportText = null;
-                        _isLoadingReport = false;
-                      });
-                    },
-                  ),
-
-                  // MobileNetV2 Card
-                  _buildHorizontalModelCard(
-                    theme: theme,
-                    modelTitle: "MobileNetV2",
-                    result: _mobilenetResult,
-                    isActive: _activeModelForRag == "MobileNetV2",
-                    onTapSelect: () {
-                      setState(() {
-                        _activeModelForRag = "MobileNetV2";
-                        _selectedPlantName = _mobilenetResult?.predictedSpecies;
-                        _ragReportText = null;
-                        _isLoadingReport = false;
-                      });
-                    },
-                  ),
-
-                  // InceptionV3 Card
-                  _buildHorizontalModelCard(
-                    theme: theme,
-                    modelTitle: "InceptionV3",
-                    result: _inceptionResult,
-                    isActive: _activeModelForRag == "InceptionV3",
-                    onTapSelect: () {
-                      setState(() {
-                        _activeModelForRag = "InceptionV3";
-                        _selectedPlantName = _inceptionResult?.predictedSpecies;
-                        _ragReportText = null;
-                        _isLoadingReport = false;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // On-Demand RAG Report Button (Saves Tokens!)
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
+                )
+              else
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.local_pharmacy,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "Selected: ${_selectedPlantName ?? 'Unknown Plant'}",
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    ElevatedButton.icon(
-                      onPressed: _isLoadingReport ? null : _generateReportForSelectedPlant,
-                      icon: const Icon(Icons.menu_book),
-                      label: Text(
-                        _ragReportText != null
-                            ? "Re-Generate Report"
-                            : "📄 Generate Pharmacological Report",
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                    ),
+                    _buildImageCard(camGrid),
+                    const SizedBox(height: 18),
+                    _buildPredictionResultsSection(),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // RAG Generated Report Section with Markdown Styling & NON-OVERFLOWING loading text
-            if (_isLoadingReport)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CircularProgressIndicator(),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Text(
-                          "Generating report for $_selectedPlantName...",
-                          style: theme.textTheme.bodyMedium,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else if (_ragReportText != null)
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.verified,
-                            color: theme.colorScheme.primary,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              "Pharmacological Profile: $_selectedPlantName",
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-
-                      // Styled Markdown Renderer
-                      MarkdownBody(
-                        data: _ragReportText!,
-                        selectable: true,
-                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                          p: theme.textTheme.bodyMedium?.copyWith(
-                            height: 1.55,
-                            fontSize: 14,
-                          ),
-                          h1: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                          h2: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                          h3: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                          strong: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                          listBullet: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -835,7 +795,6 @@ class GradCamHeatmapPainter extends CustomPainter {
 
   Color _getJetColor(double v) {
     v = v.clamp(0.0, 1.0);
-    // Smooth JET colormap: Blue -> Cyan -> Green -> Yellow -> Red
     double r = (1.5 - (v - 0.75).abs() * 4).clamp(0.0, 1.0);
     double g = (1.5 - (v - 0.50).abs() * 4).clamp(0.0, 1.0);
     double b = (1.5 - (v - 0.25).abs() * 4).clamp(0.0, 1.0);
@@ -847,18 +806,10 @@ class GradCamHeatmapPainter extends CustomPainter {
     int x1 = (x0 + 1).clamp(0, cols - 1);
     int y0 = gy.floor().clamp(0, rows - 1);
     int y1 = (y0 + 1).clamp(0, rows - 1);
-
     double dx = gx - x0;
     double dy = gy - y0;
-
-    double v00 = grid[y0][x0];
-    double v10 = grid[y0][x1];
-    double v01 = grid[y1][x0];
-    double v11 = grid[y1][x1];
-
-    double top = v00 * (1 - dx) + v10 * dx;
-    double bottom = v01 * (1 - dx) + v11 * dx;
-
+    double top = grid[y0][x0] * (1 - dx) + grid[y0][x1] * dx;
+    double bottom = grid[y1][x0] * (1 - dx) + grid[y1][x1] * dx;
     return top * (1 - dy) + bottom * dy;
   }
 
@@ -867,11 +818,8 @@ class GradCamHeatmapPainter extends CustomPainter {
     if (grid.isEmpty || grid[0].isEmpty) return;
     final int rows = grid.length;
     final int cols = grid[0].length;
-
-    // Smooth high-resolution rendering using 48x48 bilinear sub-sampling
     const int subStepsX = 48;
     const int subStepsY = 48;
-
     final double stepW = size.width / subStepsX;
     final double stepH = size.height / subStepsY;
 
@@ -879,9 +827,8 @@ class GradCamHeatmapPainter extends CustomPainter {
       for (int sx = 0; sx < subStepsX; sx++) {
         double gy = (sy + 0.5) / subStepsY * (rows - 1);
         double gx = (sx + 0.5) / subStepsX * (cols - 1);
-
         double val = _sampleBilinear(gx, gy, rows, cols);
-        if (val <= 0.05) continue; // Skip cold background
+        if (val <= 0.05) continue;
 
         final paint = Paint()
           ..color = _getJetColor(val)
