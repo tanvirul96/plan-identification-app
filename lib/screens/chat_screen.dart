@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../services/localization_service.dart';
 import '../services/rag_service.dart';
+import '../widgets/export_dialog.dart';
 import '../widgets/neu_widgets.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -24,6 +26,7 @@ class _ChatScreenState extends State<ChatScreen>
   final List<Map<String, String>> _messages = [];
   bool _isGenerating = false;
   late String _selectedPlantFocus;
+  final LocalizationService _loc = LocalizationService();
 
   @override
   bool get wantKeepAlive => true;
@@ -82,6 +85,25 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _clearChat() => setState(() => _messages.clear());
 
+  void _exportChat() {
+    if (_messages.isEmpty) return;
+    final buffer = StringBuffer();
+    for (var m in _messages) {
+      final role = m['role'] == 'user' ? '👤 User' : '🌿 RAG Assistant';
+      buffer.writeln('### $role:');
+      buffer.writeln('${m['content']}\n');
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => ExportDialog(
+        title: "RAG Clinical Consultation Transcript",
+        plantName: _selectedPlantFocus,
+        content: buffer.toString(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -89,6 +111,8 @@ class _ChatScreenState extends State<ChatScreen>
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
+    final isBn = _loc.isBangla;
+
     final plantOptions = ["🌐 All 16 Medicinal Plants"] +
         widget.ragService.plants.map((p) => p.localName).toList();
 
@@ -97,7 +121,7 @@ class _ChatScreenState extends State<ChatScreen>
         constraints: const BoxConstraints(maxWidth: 960),
         child: Column(
           children: [
-            // ── Top Bar: Plant Selector ──
+            // ── Top Bar: Plant Selector & Actions ──
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: NeuInsetContainer(
@@ -121,9 +145,12 @@ class _ChatScreenState extends State<ChatScreen>
                             color: onSurf,
                           ),
                           items: plantOptions.map((opt) {
+                            final label = opt == "🌐 All 16 Medicinal Plants"
+                                ? (isBn ? "🌐 সকল ১৬টি ঔষধি উদ্ভিদ" : "🌐 All 16 Medicinal Plants")
+                                : _loc.getPlantDisplayName(opt);
                             return DropdownMenuItem(
                               value: opt,
-                              child: Text(opt, overflow: TextOverflow.ellipsis),
+                              child: Text(label, overflow: TextOverflow.ellipsis),
                             );
                           }).toList(),
                           onChanged: (val) {
@@ -132,13 +159,23 @@ class _ChatScreenState extends State<ChatScreen>
                         ),
                       ),
                     ),
-                    NeuIconButton(
-                      icon: Icons.delete_outline,
-                      onPressed: _messages.isNotEmpty ? _clearChat : null,
-                      size: 38,
-                      iconColor: _messages.isNotEmpty ? Colors.redAccent : subtle,
-                      tooltip: "Clear History",
-                    ),
+                    if (_messages.isNotEmpty) ...[
+                      NeuIconButton(
+                        icon: Icons.share,
+                        size: 38,
+                        iconColor: primary,
+                        tooltip: isBn ? "চ্যাট এক্সপোর্ট" : "Export Transcript",
+                        onPressed: _exportChat,
+                      ),
+                      const SizedBox(width: 6),
+                      NeuIconButton(
+                        icon: Icons.delete_outline,
+                        onPressed: _clearChat,
+                        size: 38,
+                        iconColor: Colors.redAccent,
+                        tooltip: isBn ? "ইতিহাস মুছুন" : "Clear History",
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -151,10 +188,10 @@ class _ChatScreenState extends State<ChatScreen>
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 children: [
-                  _buildNeuChip("What are primary indications?"),
-                  _buildNeuChip("Safety & contraindications?"),
-                  _buildNeuChip("Standard dosage & anupana?"),
-                  _buildNeuChip("Active phytochemicals?"),
+                  _buildNeuChip(isBn ? "প্রধান ব্যবহার ও নিরাময় কী?" : "What are primary indications?"),
+                  _buildNeuChip(isBn ? "নিরাপত্তা ও পার্শ্বপ্রতিক্রিয়া?" : "Safety & contraindications?"),
+                  _buildNeuChip(isBn ? "সঠিক মাত্রা ও অনুপান?" : "Standard dosage & anupana?"),
+                  _buildNeuChip(isBn ? "সক্রিয় ফাইটোকেমিক্যালস?" : "Active phytochemicals?"),
                 ],
               ),
             ),
@@ -176,12 +213,14 @@ class _ChatScreenState extends State<ChatScreen>
                             ),
                             const SizedBox(height: 20),
                             Text(
-                              "Ask about medicinal plants",
+                              isBn ? "ভেষজ উদ্ভিদ সম্পর্কে যেকোনো প্রশ্ন করুন" : "Ask about medicinal plants",
                               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: primary),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              "Grounded in verified botanical & pharmacological knowledge base",
+                              isBn
+                                  ? "১০০% ভেক্টর ডাটাবেস ও এআই দ্বারা সমর্থিত"
+                                  : "Grounded in verified botanical & pharmacological vector database",
                               style: TextStyle(fontSize: 13, color: subtle),
                               textAlign: TextAlign.center,
                             ),
@@ -264,7 +303,7 @@ class _ChatScreenState extends State<ChatScreen>
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          "Searching RAG knowledge base...",
+                          isBn ? "ভেক্টর ডাটাবেস সার্চ ও উত্তর তৈরি হচ্ছে..." : "Searching RAG vector knowledge base...",
                           style: TextStyle(fontSize: 12, color: subtle),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -286,7 +325,9 @@ class _ChatScreenState extends State<ChatScreen>
                       child: TextField(
                         controller: _textController,
                         decoration: InputDecoration(
-                          hintText: "Ask about $_selectedPlantFocus...",
+                          hintText: isBn
+                              ? "${_loc.getPlantDisplayName(_selectedPlantFocus)} সম্পর্কে প্রশ্ন লিখুন..."
+                              : "Ask about $_selectedPlantFocus...",
                           hintStyle: TextStyle(color: subtle, fontSize: 13),
                           border: InputBorder.none,
                         ),
@@ -301,7 +342,7 @@ class _ChatScreenState extends State<ChatScreen>
                     onPressed: _isGenerating ? null : () => _sendMessage(),
                     iconColor: _isGenerating ? subtle : primary,
                     size: 48,
-                    tooltip: "Send",
+                    tooltip: isBn ? "পাঠান" : "Send",
                   ),
                 ],
               ),

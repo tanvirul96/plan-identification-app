@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import '../models/plant_model.dart';
+import '../services/localization_service.dart';
 import '../services/rag_service.dart';
 import '../widgets/neu_widgets.dart';
 
 class ExplorerScreen extends StatefulWidget {
   final RagService ragService;
   final Function(String) onSelectPlantForChat;
+  final Function(String)? onSelectPlantForClinical;
 
   const ExplorerScreen({
     super.key,
     required this.ragService,
     required this.onSelectPlantForChat,
+    this.onSelectPlantForClinical,
   });
 
   @override
@@ -20,10 +23,17 @@ class ExplorerScreen extends StatefulWidget {
 class _ExplorerScreenState extends State<ExplorerScreen>
     with AutomaticKeepAliveClientMixin {
   final TextEditingController _searchController = TextEditingController();
+  final LocalizationService _loc = LocalizationService();
   String _searchQuery = "";
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,11 +42,14 @@ class _ExplorerScreenState extends State<ExplorerScreen>
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
+    final isBn = _loc.isBangla;
 
     final filteredPlants = allPlants.where((p) {
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
+      final bnName = _loc.getPlantDisplayName(p.localName).toLowerCase();
       return p.localName.toLowerCase().contains(q) ||
+          bnName.contains(q) ||
           p.scientificName.toLowerCase().contains(q) ||
           p.commonEnglishName.toLowerCase().contains(q) ||
           p.primaryIndications.toLowerCase().contains(q) ||
@@ -60,7 +73,9 @@ class _ExplorerScreenState extends State<ExplorerScreen>
                 child: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: "Search species, indication, phytochemical...",
+                    hintText: isBn
+                        ? "প্রজাতির নাম, রোগ নিরাময়, রাসায়নিক খুঁজুন..."
+                        : "Search species, indication, phytochemical...",
                     hintStyle: TextStyle(color: subtle, fontSize: 13),
                     prefixIcon: Icon(Icons.search, color: primary, size: 20),
                     suffixIcon: _searchQuery.isNotEmpty
@@ -87,7 +102,9 @@ class _ExplorerScreenState extends State<ExplorerScreen>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    "Showing ${filteredPlants.length} of ${allPlants.length} species",
+                    isBn
+                        ? "মোট ${allPlants.length}টির মধ্যে ${filteredPlants.length}টি প্রজাতি প্রদর্শিত"
+                        : "Showing ${filteredPlants.length} of ${allPlants.length} species",
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: primary),
                   ),
                   Icon(Icons.dataset, size: 18, color: subtle),
@@ -102,7 +119,7 @@ class _ExplorerScreenState extends State<ExplorerScreen>
                   ? ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: filteredPlants.length,
-                      itemBuilder: (context, idx) => _buildPlantCard(filteredPlants[idx]),
+                      itemBuilder: (context, idx) => _buildPlantCard(filteredPlants[idx], isBn),
                     )
                   : GridView.builder(
                       padding: const EdgeInsets.all(16),
@@ -110,10 +127,10 @@ class _ExplorerScreenState extends State<ExplorerScreen>
                         crossAxisCount: 2,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
-                        mainAxisExtent: 440,
+                        mainAxisExtent: 470,
                       ),
                       itemCount: filteredPlants.length,
-                      itemBuilder: (context, idx) => _buildPlantGridCard(filteredPlants[idx]),
+                      itemBuilder: (context, idx) => _buildPlantGridCard(filteredPlants[idx], isBn),
                     ),
             ),
           ],
@@ -124,7 +141,7 @@ class _ExplorerScreenState extends State<ExplorerScreen>
 
   // ── Single Column Expandable Card (Mobile) ──
 
-  Widget _buildPlantCard(PlantRecord plant) {
+  Widget _buildPlantCard(PlantRecord plant, bool isBn) {
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
@@ -141,64 +158,97 @@ class _ExplorerScreenState extends State<ExplorerScreen>
             child: ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
               childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-            leading: NeuContainer(
-              borderRadius: 16,
-              padding: const EdgeInsets.all(8),
-              blurRadius: 6,
-              offset: const Offset(2, 2),
-              child: Text(
-                plant.isHighRisk ? "⚠️" : "🌿",
-                style: const TextStyle(fontSize: 16),
-              ),
-            ),
-            title: Text(
-              plant.localName,
-              style: TextStyle(fontWeight: FontWeight.w700, color: onSurf, fontSize: 15),
-            ),
-            subtitle: Text(
-              "${plant.scientificName} • ${plant.commonEnglishName}",
-              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: subtle),
-            ),
-            children: [
-              _buildDetailRow("Family", plant.family),
-              _buildDetailRow("Growth Habit", plant.growthHabit),
-              _buildDetailRow("Key Visuals", plant.keyVisualIdentifiers),
-              _buildDetailRow("Phytochemicals", plant.activePhytochemicals),
-              _buildDetailRow("Indications", plant.primaryIndications),
-              _buildDetailRow("Preparation", plant.traditionalPreparationMethods),
-              _buildDetailRow("Standard Dosage", plant.standardDosage),
-              _buildDetailRow("Anupana", plant.safeVehicle),
-              _buildDetailRow("Toxicity", plant.toxicityProfile, isWarning: plant.isHighRisk),
-              _buildDetailRow("Contraindications", plant.contraindications),
-              _buildDetailRow("Adverse Reactions", plant.adverseReactions),
-              const SizedBox(height: 14),
-              NeuButton(
-                onPressed: () => widget.onSelectPlantForChat(plant.localName),
-                borderRadius: 14,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.chat_bubble_outline, size: 16, color: primary),
-                    const SizedBox(width: 8),
-                    Text(
-                      "Chat About ${plant.localName}",
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: onSurf),
-                    ),
-                  ],
+              leading: NeuContainer(
+                borderRadius: 16,
+                padding: const EdgeInsets.all(8),
+                blurRadius: 6,
+                offset: const Offset(2, 2),
+                child: Text(
+                  plant.isHighRisk ? "⚠️" : "🌿",
+                  style: const TextStyle(fontSize: 16),
                 ),
               ),
-            ],
+              title: Text(
+                _loc.getPlantDisplayName(plant.localName),
+                style: TextStyle(fontWeight: FontWeight.w700, color: onSurf, fontSize: 15),
+              ),
+              subtitle: Text(
+                "${plant.scientificName} • ${plant.commonEnglishName}",
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: subtle),
+              ),
+              children: [
+                _buildDetailRow(isBn ? "গোত্র" : "Family", plant.family),
+                _buildDetailRow(isBn ? "আবাস" : "Growth Habit", plant.growthHabit),
+                _buildDetailRow(isBn ? "চেনার উপায়" : "Key Visuals", plant.keyVisualIdentifiers),
+                _buildDetailRow(isBn ? "রাসায়নিক" : "Phytochemicals", plant.activePhytochemicals),
+                _buildDetailRow(isBn ? "রোগ নিরাময়" : "Indications", plant.primaryIndications),
+                _buildDetailRow(isBn ? "প্রস্তুতি" : "Preparation", plant.traditionalPreparationMethods),
+                _buildDetailRow(isBn ? "মাত্রা" : "Standard Dosage", plant.standardDosage),
+                _buildDetailRow(isBn ? "অনুপান" : "Anupana", plant.safeVehicle),
+                _buildDetailRow(isBn ? "বিষাক্ততা" : "Toxicity", plant.toxicityProfile, isWarning: plant.isHighRisk),
+                _buildDetailRow(isBn ? "ব্যবহার নিষেধ" : "Contraindications", plant.contraindications),
+                _buildDetailRow(isBn ? "পার্শ্বপ্রতিক্রিয়া" : "Adverse Reactions", plant.adverseReactions),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: NeuButton(
+                        onPressed: () => widget.onSelectPlantForChat(plant.localName),
+                        borderRadius: 14,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.chat_bubble_outline, size: 16, color: primary),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                isBn ? "RAG চ্যাট" : "Ask RAG",
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (widget.onSelectPlantForClinical != null) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: NeuButton(
+                          onPressed: () => widget.onSelectPlantForClinical!(plant.localName),
+                          borderRadius: 14,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.calculate_outlined, size: 16, color: primary),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  isBn ? "মাত্রা ক্যালকুলেটর" : "Dose Calc",
+                                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   // ── Grid Card (Desktop / Tablet) ──
 
-  Widget _buildPlantGridCard(PlantRecord plant) {
+  Widget _buildPlantGridCard(PlantRecord plant, bool isBn) {
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
@@ -227,7 +277,7 @@ class _ExplorerScreenState extends State<ExplorerScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      plant.localName,
+                      _loc.getPlantDisplayName(plant.localName),
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: onSurf),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -249,35 +299,67 @@ class _ExplorerScreenState extends State<ExplorerScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildDetailRow("Family", plant.family),
-                  _buildDetailRow("Indications", plant.primaryIndications),
-                  _buildDetailRow("Phytochemicals", plant.activePhytochemicals),
-                  _buildDetailRow("Preparation", "${plant.traditionalPreparationMethods} (${plant.standardDosage})"),
-                  _buildDetailRow("Toxicity", plant.toxicityProfile, isWarning: plant.isHighRisk),
+                  _buildDetailRow(isBn ? "গোত্র" : "Family", plant.family),
+                  _buildDetailRow(isBn ? "রোগ নিরাময়" : "Indications", plant.primaryIndications),
+                  _buildDetailRow(isBn ? "রাসায়নিক" : "Phytochemicals", plant.activePhytochemicals),
+                  _buildDetailRow(isBn ? "মাত্রা ও প্রস্তুত" : "Preparation",
+                      "${plant.traditionalPreparationMethods} (${plant.standardDosage})"),
+                  _buildDetailRow(isBn ? "নিরাপত্তা" : "Toxicity", plant.toxicityProfile,
+                      isWarning: plant.isHighRisk),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 10),
 
-          NeuButton(
-            onPressed: () => widget.onSelectPlantForChat(plant.localName),
-            borderRadius: 14,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.chat_bubble_outline, size: 16, color: primary),
+          Row(
+            children: [
+              Expanded(
+                child: NeuButton(
+                  onPressed: () => widget.onSelectPlantForChat(plant.localName),
+                  borderRadius: 14,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.chat_bubble_outline, size: 15, color: primary),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          isBn ? "RAG চ্যাট" : "Ask RAG",
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (widget.onSelectPlantForClinical != null) ...[
                 const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    "Chat About ${plant.localName}",
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
-                    overflow: TextOverflow.ellipsis,
+                Expanded(
+                  child: NeuButton(
+                    onPressed: () => widget.onSelectPlantForClinical!(plant.localName),
+                    borderRadius: 14,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.calculate_outlined, size: 15, color: primary),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            isBn ? "মাত্রা" : "Dosage",
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
-            ),
+            ],
           ),
         ],
       ),

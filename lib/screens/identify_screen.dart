@@ -1,13 +1,19 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'dart:convert';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:image_picker/image_picker.dart';
+import '../models/scan_record.dart';
+import '../services/history_service.dart';
+import '../services/image_quality_service.dart';
+import '../services/localization_service.dart';
 import '../services/rag_service.dart';
 import '../services/onnx_service.dart';
+import '../widgets/export_dialog.dart';
+import '../widgets/image_editor_dialog.dart';
 import '../widgets/neu_widgets.dart';
+import '../widgets/quality_badge_widget.dart';
 
 /// Custom scroll behavior that enables mouse drag on web/desktop.
 class _WebDragScrollBehavior extends MaterialScrollBehavior {
@@ -55,10 +61,13 @@ class _IdentifyScreenState extends State<IdentifyScreen>
   bool _isLoadingReport = false;
   String? _ragReportText;
   String? _selectedPlantName;
+  Uint8List? _activeImageBytes;
+  QualityAssessment? _qualityAssessment;
 
   final ImagePicker _imagePicker = ImagePicker();
   final OnnxService _onnxService = OnnxService();
-  XFile? _pickedImageFile;
+  final HistoryService _historyService = HistoryService();
+  final LocalizationService _loc = LocalizationService();
 
   @override
   void initState() {
@@ -68,7 +77,8 @@ class _IdentifyScreenState extends State<IdentifyScreen>
 
   void _clearAll() {
     setState(() {
-      _pickedImageFile = null;
+      _activeImageBytes = null;
+      _qualityAssessment = null;
       _efficientnetResult = null;
       _mobilenetResult = null;
       _inceptionResult = null;
@@ -102,6 +112,76 @@ class _IdentifyScreenState extends State<IdentifyScreen>
     }
   }
 
+  Future<void> _runInferenceOnBytes(Uint8List imageBytes) async {
+    // 1. Run real-time image quality & blur assessment
+    final quality = ImageQualityService.assess(imageBytes);
+
+    setState(() {
+      _activeImageBytes = imageBytes;
+      _qualityAssessment = quality;
+      _isPredicting = true;
+      _efficientnetResult = null;
+      _mobilenetResult = null;
+      _inceptionResult = null;
+      _selectedPlantName = null;
+      _ragReportText = null;
+    });
+
+    try {
+      final results = await _onnxService.predictAll(imageBytes);
+
+      if (mounted) {
+        LocalPredictionResult? activeResult;
+
+        setState(() {
+          _efficientnetResult = results["EfficientNetV2"];
+          _mobilenetResult = results["MobileNetV2"];
+          _inceptionResult = results["InceptionV3"];
+          _isPredicting = false;
+
+          if (_activeModelForRag == "EfficientNetV2") {
+            activeResult = _efficientnetResult;
+          } else if (_activeModelForRag == "InceptionV3") {
+            activeResult = _inceptionResult;
+          } else {
+            activeResult = _mobilenetResult;
+          }
+          activeResult ??= _efficientnetResult ?? _mobilenetResult ?? _inceptionResult;
+          _selectedPlantName = activeResult?.predictedSpecies;
+          _ragReportText = null;
+          _isLoadingReport = false;
+        });
+
+        // Auto-save to persistent history
+        if (activeResult != null) {
+          _historyService.saveScan(ScanRecord(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            timestamp: DateTime.now(),
+            plantName: activeResult!.predictedSpecies,
+            confidence: activeResult!.confidence,
+            modelName: activeResult!.modelName,
+            imageBase64: base64Encode(imageBytes),
+            top3Candidates: activeResult!.top3Candidates,
+          ));
+        }
+      }
+    } catch (inferenceError) {
+      if (mounted) {
+        setState(() => _isPredicting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 8),
+            backgroundColor: Colors.red.shade800,
+            content: Text(
+              "Model inference failed: $inferenceError",
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _pickLeafImage(ImageSource source) async {
     try {
       final XFile? picked = await _imagePicker.pickImage(
@@ -113,56 +193,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
 
       if (picked != null) {
         final Uint8List imageBytes = await picked.readAsBytes();
-
-        setState(() {
-          _pickedImageFile = picked;
-          _isPredicting = true;
-          _efficientnetResult = null;
-          _mobilenetResult = null;
-          _inceptionResult = null;
-          _selectedPlantName = null;
-          _ragReportText = null;
-        });
-
-        try {
-          final results = await _onnxService.predictAll(imageBytes);
-
-          if (mounted) {
-            setState(() {
-              _efficientnetResult = results["EfficientNetV2"];
-              _mobilenetResult = results["MobileNetV2"];
-              _inceptionResult = results["InceptionV3"];
-              _isPredicting = false;
-
-              LocalPredictionResult? activeResult;
-              if (_activeModelForRag == "EfficientNetV2") {
-                activeResult = _efficientnetResult;
-              } else if (_activeModelForRag == "InceptionV3") {
-                activeResult = _inceptionResult;
-              } else {
-                activeResult = _mobilenetResult;
-              }
-              activeResult ??= _efficientnetResult ?? _mobilenetResult ?? _inceptionResult;
-              _selectedPlantName = activeResult?.predictedSpecies;
-              _ragReportText = null;
-              _isLoadingReport = false;
-            });
-          }
-        } catch (inferenceError) {
-          if (mounted) {
-            setState(() => _isPredicting = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                duration: const Duration(seconds: 8),
-                backgroundColor: Colors.red.shade800,
-                content: Text(
-                  "Model inference failed: $inferenceError",
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ),
-            );
-          }
-        }
+        await _runInferenceOnBytes(imageBytes);
       }
     } on MissingPluginException {
       if (mounted) {
@@ -177,6 +208,18 @@ class _IdentifyScreenState extends State<IdentifyScreen>
           SnackBar(content: Text("Error selecting image: $e")),
         );
       }
+    }
+  }
+
+  Future<void> _openImageEditor() async {
+    if (_activeImageBytes == null) return;
+    final editedBytes = await showDialog<Uint8List>(
+      context: context,
+      builder: (ctx) => ImageEditorDialog(initialImageBytes: _activeImageBytes!),
+    );
+
+    if (editedBytes != null && mounted) {
+      await _runInferenceOnBytes(editedBytes);
     }
   }
 
@@ -199,6 +242,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
+    final isBn = _loc.isBangla;
 
     return GestureDetector(
       onTap: result != null ? onTapSelect : null,
@@ -250,10 +294,11 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("Top Prediction", style: TextStyle(fontSize: 11, color: subtle)),
+                          Text(isBn ? "প্রধান শনাক্তকরণ" : "Top Prediction",
+                              style: TextStyle(fontSize: 11, color: subtle)),
                           const SizedBox(height: 2),
                           Text(
-                            result.predictedSpecies,
+                            _loc.getPlantDisplayName(result.predictedSpecies),
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -290,7 +335,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        "Top 3 Candidates",
+                        isBn ? "শীর্ষ ৩টি প্রার্থী" : "Top 3 Candidates",
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: subtle),
                       ),
                       Icon(
@@ -309,6 +354,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                     var cand = entry.value;
                     String rankEmoji = idx == 0 ? "🥇" : (idx == 1 ? "🥈" : "🥉");
                     double conf = (cand['confidence'] as num).toDouble();
+                    String spName = cand['species'] as String;
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6.0),
@@ -320,7 +366,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                             children: [
                               Expanded(
                                 child: Text(
-                                  "$rankEmoji ${cand['species']}",
+                                  "$rankEmoji ${_loc.getPlantDisplayName(spName)}",
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: idx == 0 ? FontWeight.bold : FontWeight.normal,
@@ -365,7 +411,8 @@ class _IdentifyScreenState extends State<IdentifyScreen>
   Widget _buildImageCard(List<List<double>>? camGrid) {
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
-    final hasSelection = _pickedImageFile != null || _selectedPlantName != null;
+    final hasSelection = _activeImageBytes != null || _selectedPlantName != null;
+    final isBn = _loc.isBangla;
 
     return NeuContainer(
       padding: const EdgeInsets.all(20),
@@ -378,7 +425,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
             children: [
               Expanded(
                 child: Text(
-                  "Capture / Select Leaf",
+                  isBn ? "পাতার নমুনা সংগ্রহ ও নির্বাচন" : "Capture / Select Leaf",
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: onSurf),
                 ),
               ),
@@ -387,47 +434,55 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                   icon: Icons.refresh,
                   onPressed: _clearAll,
                   iconColor: Colors.redAccent,
-                  tooltip: "Clear Screen",
+                  tooltip: isBn ? "স্ক্রিন পরিষ্কার করুন" : "Clear Screen",
                 ),
             ],
           ),
           const SizedBox(height: 16),
 
-          // Action Buttons
+          // Action Buttons: Take Photo & Gallery
           Row(
             children: [
               Expanded(
                 child: NeuButton(
                   onPressed: () => _pickLeafImage(ImageSource.camera),
                   borderRadius: 16,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.camera_alt, size: 20, color: primary),
                       const SizedBox(width: 8),
-                      Text(
-                        "Take Photo",
-                        style: TextStyle(fontWeight: FontWeight.w600, color: onSurf, fontSize: 13),
+                      Flexible(
+                        child: Text(
+                          isBn ? "ছবি তুলুন" : "Take Photo",
+                          style: TextStyle(fontWeight: FontWeight.w600, color: onSurf, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: NeuButton(
                   onPressed: () => _pickLeafImage(ImageSource.gallery),
                   borderRadius: 16,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.photo_library, size: 20, color: primary),
                       const SizedBox(width: 8),
-                      Text(
-                        "Gallery",
-                        style: TextStyle(fontWeight: FontWeight.w600, color: onSurf, fontSize: 13),
+                      Flexible(
+                        child: Text(
+                          isBn ? "গ্যালারি" : "Gallery",
+                          style: TextStyle(fontWeight: FontWeight.w600, color: onSurf, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -436,28 +491,21 @@ class _IdentifyScreenState extends State<IdentifyScreen>
             ],
           ),
 
-          if (_pickedImageFile != null) ...[
-            const SizedBox(height: 18),
+          if (_activeImageBytes != null) ...[
+            const SizedBox(height: 14),
 
-            // Image + Grad-CAM Overlay
+            // Image Preview + Grad-CAM Heatmap Overlay
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  kIsWeb
-                      ? Image.network(
-                          _pickedImageFile!.path,
-                          height: 260,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        )
-                      : Image.file(
-                          File(_pickedImageFile!.path),
-                          height: 260,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        ),
+                  Image.memory(
+                    _activeImageBytes!,
+                    height: 260,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
                   if (_showGradCamOverlay && camGrid != null)
                     Positioned.fill(
                       child: CustomPaint(painter: GradCamHeatmapPainter(grid: camGrid)),
@@ -465,43 +513,79 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
 
-            // Grad-CAM Toggle
-            NeuButton(
-              onPressed: camGrid != null
-                  ? () => setState(() => _showGradCamOverlay = !_showGradCamOverlay)
-                  : null,
-              borderRadius: 14,
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              color: _showGradCamOverlay
-                  ? Colors.deepOrange.shade100.withValues(alpha: 0.3)
-                  : null,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      _showGradCamOverlay ? Icons.visibility_off : Icons.remove_red_eye,
-                      size: 18,
-                      color: _showGradCamOverlay ? Colors.deepOrange.shade700 : primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _showGradCamOverlay
-                          ? "Hide Grad-CAM Heatmap"
-                          : "Show Grad-CAM ($_activeModelForRag)",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                        color: _showGradCamOverlay ? Colors.deepOrange.shade700 : NeuTheme.onSurface(context),
-                      ),
-                    ),
-                  ],
-                ),
+            // Quality Badge
+            if (_qualityAssessment != null)
+              QualityBadgeWidget(
+                assessment: _qualityAssessment!,
               ),
+            const SizedBox(height: 12),
+
+            // Controls: Crop/Rotate Editor & Grad-CAM Toggle
+            Row(
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: NeuButton(
+                    onPressed: _openImageEditor,
+                    borderRadius: 14,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.crop_rotate, size: 18, color: primary),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            isBn ? "ক্রপ / ঘোরান" : "Crop / Edit",
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: onSurf),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 6,
+                  child: NeuButton(
+                    onPressed: camGrid != null
+                        ? () => setState(() => _showGradCamOverlay = !_showGradCamOverlay)
+                        : null,
+                    borderRadius: 14,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    color: _showGradCamOverlay
+                        ? Colors.deepOrange.shade100.withValues(alpha: 0.3)
+                        : null,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _showGradCamOverlay ? Icons.visibility_off : Icons.remove_red_eye,
+                          size: 18,
+                          color: _showGradCamOverlay ? Colors.deepOrange.shade700 : primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            _showGradCamOverlay
+                                ? (isBn ? "হিটম্যাপ লুকান" : "Hide Grad-CAM")
+                                : (isBn ? "হিটম্যাপ দেখুন" : "Show Grad-CAM"),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              color: _showGradCamOverlay ? Colors.deepOrange.shade700 : onSurf,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
@@ -515,6 +599,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
+    final isBn = _loc.isBangla;
 
     if (_isPredicting) {
       return NeuContainer(
@@ -525,8 +610,11 @@ class _IdentifyScreenState extends State<IdentifyScreen>
             CircularProgressIndicator(color: primary),
             const SizedBox(height: 14),
             Text(
-              "Running model inference & feature extraction...",
+              isBn
+                  ? "অন-ডিভাইস লোকাল ONNX মডেল দ্বারা বিশ্লেষণ চলছে..."
+                  : "Running on-device local ONNX inference & feature extraction...",
               style: TextStyle(color: subtle, fontSize: 13),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -542,12 +630,14 @@ class _IdentifyScreenState extends State<IdentifyScreen>
             Icon(Icons.image_search, size: 48, color: primary.withValues(alpha: 0.5)),
             const SizedBox(height: 14),
             Text(
-              "No Leaf Selected",
+              isBn ? "কোনো পাতা নির্বাচন করা হয়নি" : "No Leaf Selected",
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: onSurf),
             ),
             const SizedBox(height: 8),
             Text(
-              "Capture or select a leaf image to compare AI model predictions and Grad-CAM attention heatmaps.",
+              isBn
+                  ? "পাতার ছবি তুলুন বা গ্যালারি থেকে নির্বাচন করে ৩টি ডিপ লার্নিং মডেলের ফলাফল তুলনা করুন।"
+                  : "Capture or select a leaf image to compare AI model predictions and Grad-CAM attention heatmaps.",
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: subtle, height: 1.4),
             ),
@@ -560,7 +650,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          "⚖️ Model Predictions",
+          isBn ? "⚖️ মডেলের ফলাফল ও বিশ্লেষণ" : "⚖️ Model Predictions",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: primary),
         ),
         const SizedBox(height: 14),
@@ -613,7 +703,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
         ),
         const SizedBox(height: 22),
 
-        // Report Section
+        // Report Action Card
         NeuContainer(
           padding: const EdgeInsets.all(18),
           borderRadius: 22,
@@ -626,7 +716,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      "Selected: ${_selectedPlantName ?? 'Unknown'}",
+                      "${isBn ? 'নির্বাচিত প্রজাতি' : 'Selected'}: ${_loc.getPlantDisplayName(_selectedPlantName ?? 'Unknown')}",
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: primary),
                     ),
                   ),
@@ -642,11 +732,14 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                   children: [
                     Icon(Icons.menu_book, size: 18, color: primary),
                     const SizedBox(width: 8),
-                    Text(
-                      _ragReportText != null
-                          ? "Re-Generate Report"
-                          : "📄 Generate Pharmacological Report",
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: onSurf),
+                    Flexible(
+                      child: Text(
+                        _ragReportText != null
+                            ? (isBn ? "পুনরায় রিপোর্ট তৈরি করুন" : "Re-Generate Report")
+                            : (isBn ? "📄 ফার্মাকোলজিক্যাল রিপোর্ট তৈরি করুন" : "📄 Generate Pharmacological Report"),
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: onSurf),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -669,7 +762,9 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(
-                    "Generating report for $_selectedPlantName...",
+                    isBn
+                        ? "${_loc.getPlantDisplayName(_selectedPlantName ?? '')} এর রিপোর্ট তৈরি হচ্ছে..."
+                        : "Generating report for $_selectedPlantName...",
                     style: TextStyle(color: subtle, fontSize: 13),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -685,14 +780,39 @@ class _IdentifyScreenState extends State<IdentifyScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.verified, color: primary, size: 20),
-                    const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        "Pharmacological Profile: $_selectedPlantName",
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: primary),
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified, color: primary, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              isBn
+                                  ? "ক্লিনিক্যাল প্রোফাইল: ${_loc.getPlantDisplayName(_selectedPlantName ?? '')}"
+                                  : "Clinical Profile: $_selectedPlantName",
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: primary),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
+                    NeuIconButton(
+                      icon: Icons.share,
+                      size: 38,
+                      tooltip: isBn ? "রিপোর্ট শেয়ার / এক্সপোর্ট" : "Share / Export",
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => ExportDialog(
+                            title: "Pharmacological Monograph",
+                            plantName: _selectedPlantName ?? 'Plant Specimen',
+                            content: _ragReportText!,
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -725,6 +845,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
     final isTwoColumn = screenWidth >= 950;
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
+    final isBn = _loc.isBangla;
 
     return Center(
       child: ConstrainedBox(
@@ -748,7 +869,9 @@ class _IdentifyScreenState extends State<IdentifyScreen>
                     const SizedBox(width: 10),
                     Flexible(
                       child: Text(
-                        "Medicinal Leaf Identifier & AI Pharmacologist",
+                        isBn
+                            ? "ভেষজ উদ্ভিদ শনাক্তকরণ ও এআই ক্লিনিক্যাল অ্যাসিস্ট্যান্ট"
+                            : "Medicinal Leaf Identifier & AI Pharmacologist",
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: onSurf),
                         overflow: TextOverflow.ellipsis,
                       ),
