@@ -4,7 +4,6 @@ import '../services/dosage_calculator_service.dart';
 import '../services/drug_interaction_service.dart';
 import '../services/localization_service.dart';
 import '../services/rag_service.dart';
-import '../services/toxicity_service.dart';
 import '../widgets/neu_widgets.dart';
 
 class ClinicalHubScreen extends StatefulWidget {
@@ -26,7 +25,6 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
   late TabController _tabController;
   final LocalizationService _loc = LocalizationService();
   final DrugInteractionService _drugService = DrugInteractionService();
-  final ToxicityService _toxicityService = ToxicityService();
 
   // Drug Interaction State
   String _selectedInteractionPlant = 'All';
@@ -45,7 +43,7 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _selectedDosePlant = widget.initialPlant ?? 'Neem';
     _recalculateDosage();
   }
@@ -106,10 +104,6 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
                       icon: const Icon(Icons.calculate_outlined, size: 20),
                       text: isBn ? "মাত্রা ক্যালকুলেটর" : "Dosage Calc",
                     ),
-                    Tab(
-                      icon: const Icon(Icons.warning_amber_rounded, size: 20),
-                      text: isBn ? "বিষাক্ততা ও জরুরি" : "Toxicity & ER",
-                    ),
                   ],
                 ),
               ),
@@ -122,7 +116,6 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
                 children: [
                   _buildDrugInteractionsTab(isBn, primary, onSurf),
                   _buildDosageCalculatorTab(isBn, primary, onSurf),
-                  _buildToxicityGuideTab(isBn, primary, onSurf),
                 ],
               ),
             ),
@@ -570,133 +563,6 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
             fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
             color: isSel ? primary : NeuTheme.onSurface(context),
           ),
-        ),
-      ),
-    );
-  }
-
-  // ─── TAB 3: Toxicity & Emergency Protocol Guide ───────────────────────────
-
-  Widget _buildToxicityGuideTab(bool isBn, Color primary, Color onSurf) {
-    final profiles = _toxicityService.getAllProfiles();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Emergency Header
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.red.shade900.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.red.shade700.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.emergency, color: Colors.red.shade700, size: 28),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isBn ? "🚨 জরুরি বিষাক্ততা ও ফার্স্ট-এইড প্রোটোকল" : "🚨 Emergency Toxicity & Triage Protocol",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.red.shade800),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isBn
-                          ? "বিষাক্ত ভেষজ উদ্ভিদের সংস্পর্শে দ্রুত প্রাথমিক চিকিৎসা ও জরুরি চিকিৎসা নির্দেশিকা।"
-                          : "Immediate first-aid actions for hazardous and toxic botanical exposures.",
-                      style: TextStyle(fontSize: 11, color: NeuTheme.subtleText(context)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Toxic Species Cards
-        ...profiles.map((p) => _buildToxicProfileCard(p, isBn, onSurf)),
-      ],
-    );
-  }
-
-  Widget _buildToxicProfileCard(ToxicPlantProfile p, bool isBn, Color onSurf) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: NeuContainer(
-        borderRadius: 22,
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "${_loc.getPlantDisplayName(p.plantName)} (${p.scientificName})",
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: onSurf),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        p.riskTier,
-                        style: TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red.shade700),
-                      ),
-                    ],
-                  ),
-                ),
-                NeuContainer(
-                  borderRadius: 14,
-                  padding: const EdgeInsets.all(8),
-                  blurRadius: 4,
-                  child: const Text("⚠️", style: TextStyle(fontSize: 18)),
-                ),
-              ],
-            ),
-            Divider(height: 20, color: NeuTheme.shadowDark(context).withValues(alpha: 0.15)),
-            _buildInfoRow(isBn ? "বিষাক্ত অংশ" : "Toxic Parts", isBn ? p.toxicPartsBn : p.toxicPartsEn, onSurf),
-            const SizedBox(height: 6),
-            _buildInfoRow(isBn ? "বিষাক্ত উপাদান" : "Toxin Compounds",
-                isBn ? p.toxinCompoundsBn : p.toxinCompoundsEn, onSurf),
-            const SizedBox(height: 10),
-            Text(isBn ? "লক্ষণসমূহ:" : "Clinical Symptoms:",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.red.shade800)),
-            const SizedBox(height: 4),
-            ...(isBn ? p.symptomsBn : p.symptomsEn).map((s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 3.0),
-                  child: Text("• $s",
-                      style: TextStyle(fontSize: 11, color: onSurf, height: 1.35)),
-                )),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.shade800.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(isBn ? "⚡ জরুরি প্রাথমিক চিকিৎসা (First Aid):" : "⚡ Emergency First Aid:",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.red.shade800)),
-                  const SizedBox(height: 4),
-                  ...(isBn ? p.emergencyFirstAidBn : p.emergencyFirstAidEn).map((a) => Padding(
-                        padding: const EdgeInsets.only(bottom: 3.0),
-                        child: Text("✓ $a",
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: onSurf, height: 1.35)),
-                      )),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );

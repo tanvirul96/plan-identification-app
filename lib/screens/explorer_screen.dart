@@ -25,6 +25,7 @@ class _ExplorerScreenState extends State<ExplorerScreen>
   final TextEditingController _searchController = TextEditingController();
   final LocalizationService _loc = LocalizationService();
   String _searchQuery = "";
+  final Set<String> _expandedPlantNames = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -145,65 +146,155 @@ class _ExplorerScreenState extends State<ExplorerScreen>
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
+    final bool isExpanded = _expandedPlantNames.contains(plant.localName);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: NeuContainer(
         borderRadius: 22,
-        padding: EdgeInsets.zero,
-        child: Material(
-          type: MaterialType.transparency,
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-              childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-              leading: NeuContainer(
-                borderRadius: 16,
-                padding: const EdgeInsets.all(8),
-                blurRadius: 6,
-                offset: const Offset(2, 2),
-                child: Text(
-                  plant.isHighRisk ? "⚠️" : "🌿",
-                  style: const TextStyle(fontSize: 16),
-                ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Clickable Header Tile
+            InkWell(
+              onTap: () {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedPlantNames.remove(plant.localName);
+                  } else {
+                    _expandedPlantNames.add(plant.localName);
+                  }
+                });
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Row(
+                children: [
+                  // Unified Plant Icon (🌿 for ALL items)
+                  NeuContainer(
+                    borderRadius: 14,
+                    padding: const EdgeInsets.all(8),
+                    blurRadius: 4,
+                    offset: const Offset(2, 2),
+                    child: const Text(
+                      "🌿",
+                      style: TextStyle(fontSize: 18),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Plant Local & Scientific Names
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _loc.getPlantDisplayName(plant.localName),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: onSurf,
+                                  fontSize: 15,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (plant.isHighRisk)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                margin: const EdgeInsets.only(left: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade900.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  isBn ? "⚠️ সতর্কতা" : "⚠️ Caution",
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red.shade700,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          "${plant.scientificName} • ${plant.commonEnglishName}",
+                          style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: subtle),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Chevron indicator
+                  Icon(
+                    isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: subtle,
+                    size: 22,
+                  ),
+                ],
               ),
-              title: Text(
-                _loc.getPlantDisplayName(plant.localName),
-                style: TextStyle(fontWeight: FontWeight.w700, color: onSurf, fontSize: 15),
-              ),
-              subtitle: Text(
-                "${plant.scientificName} • ${plant.commonEnglishName}",
-                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: subtle),
-              ),
-              children: [
-                _buildDetailRow(isBn ? "গোত্র" : "Family", plant.family),
-                _buildDetailRow(isBn ? "আবাস" : "Growth Habit", plant.growthHabit),
-                _buildDetailRow(isBn ? "চেনার উপায়" : "Key Visuals", plant.keyVisualIdentifiers),
-                _buildDetailRow(isBn ? "রাসায়নিক" : "Phytochemicals", plant.activePhytochemicals),
-                _buildDetailRow(isBn ? "রোগ নিরাময়" : "Indications", plant.primaryIndications),
-                _buildDetailRow(isBn ? "প্রস্তুতি" : "Preparation", plant.traditionalPreparationMethods),
-                _buildDetailRow(isBn ? "মাত্রা" : "Standard Dosage", plant.standardDosage),
-                _buildDetailRow(isBn ? "অনুপান" : "Anupana", plant.safeVehicle),
-                _buildDetailRow(isBn ? "বিষাক্ততা" : "Toxicity", plant.toxicityProfile, isWarning: plant.isHighRisk),
-                _buildDetailRow(isBn ? "ব্যবহার নিষেধ" : "Contraindications", plant.contraindications),
-                _buildDetailRow(isBn ? "পার্শ্বপ্রতিক্রিয়া" : "Adverse Reactions", plant.adverseReactions),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
+            ),
+
+            // Expanded Details Section
+            if (isExpanded) ...[
+              Divider(height: 24, color: NeuTheme.shadowDark(context).withValues(alpha: 0.2)),
+              _buildDetailRow(isBn ? "গোত্র" : "Family", plant.family),
+              _buildDetailRow(isBn ? "আবাস" : "Growth Habit", plant.growthHabit),
+              _buildDetailRow(isBn ? "চেনার উপায়" : "Key Visuals", plant.keyVisualIdentifiers),
+              _buildDetailRow(isBn ? "রাসায়নিক" : "Phytochemicals", plant.activePhytochemicals),
+              _buildDetailRow(isBn ? "রোগ নিরাময়" : "Indications", plant.primaryIndications),
+              _buildDetailRow(isBn ? "প্রস্তুতি" : "Preparation", plant.traditionalPreparationMethods),
+              _buildDetailRow(isBn ? "মাত্রা" : "Standard Dosage", plant.standardDosage),
+              _buildDetailRow(isBn ? "অনুপান" : "Anupana", plant.safeVehicle),
+              _buildDetailRow(isBn ? "বিষাক্ততা" : "Toxicity", plant.toxicityProfile, isWarning: plant.isHighRisk),
+              _buildDetailRow(isBn ? "ব্যবহার নিষেধ" : "Contraindications", plant.contraindications),
+              _buildDetailRow(isBn ? "পার্শ্বপ্রতিক্রিয়া" : "Adverse Reactions", plant.adverseReactions),
+              const SizedBox(height: 14),
+
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: NeuButton(
+                      onPressed: () => widget.onSelectPlantForChat(plant.localName),
+                      borderRadius: 14,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.chat_bubble_outline, size: 16, color: primary),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              isBn ? "RAG চ্যাট" : "Ask RAG",
+                              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (widget.onSelectPlantForClinical != null) ...[
+                    const SizedBox(width: 10),
                     Expanded(
                       child: NeuButton(
-                        onPressed: () => widget.onSelectPlantForChat(plant.localName),
+                        onPressed: () => widget.onSelectPlantForClinical!(plant.localName),
                         borderRadius: 14,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.chat_bubble_outline, size: 16, color: primary),
+                            Icon(Icons.calculate_outlined, size: 16, color: primary),
                             const SizedBox(width: 6),
                             Flexible(
                               child: Text(
-                                isBn ? "RAG চ্যাট" : "Ask RAG",
+                                isBn ? "মাত্রা ক্যালকুলেটর" : "Dose Calc",
                                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -212,35 +303,11 @@ class _ExplorerScreenState extends State<ExplorerScreen>
                         ),
                       ),
                     ),
-                    if (widget.onSelectPlantForClinical != null) ...[
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: NeuButton(
-                          onPressed: () => widget.onSelectPlantForClinical!(plant.localName),
-                          borderRadius: 14,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.calculate_outlined, size: 16, color: primary),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  isBn ? "মাত্রা ক্যালকুলেটর" : "Dose Calc",
-                                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: onSurf),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -261,14 +328,15 @@ class _ExplorerScreenState extends State<ExplorerScreen>
         children: [
           Row(
             children: [
+              // Unified Plant Icon (🌿 for ALL items)
               NeuContainer(
                 borderRadius: 14,
                 padding: const EdgeInsets.all(8),
-                blurRadius: 6,
+                blurRadius: 4,
                 offset: const Offset(2, 2),
-                child: Text(
-                  plant.isHighRisk ? "⚠️" : "🌿",
-                  style: const TextStyle(fontSize: 16),
+                child: const Text(
+                  "🌿",
+                  style: TextStyle(fontSize: 18),
                 ),
               ),
               const SizedBox(width: 12),
@@ -276,10 +344,32 @@ class _ExplorerScreenState extends State<ExplorerScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _loc.getPlantDisplayName(plant.localName),
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: onSurf),
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _loc.getPlantDisplayName(plant.localName),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: onSurf),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (plant.isHighRisk)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade900.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isBn ? "⚠️ সতর্কতা" : "⚠️ Caution",
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade700,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     Text(
                       "${plant.scientificName} • ${plant.commonEnglishName}",

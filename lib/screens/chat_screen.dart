@@ -1,7 +1,9 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../services/localization_service.dart';
 import '../services/rag_service.dart';
+import '../widgets/botanical_loader.dart';
 import '../widgets/export_dialog.dart';
 import '../widgets/neu_widgets.dart';
 
@@ -43,6 +45,13 @@ class _ChatScreenState extends State<ChatScreen>
     if (widget.activePlant != null && widget.activePlant != oldWidget.activePlant) {
       setState(() => _selectedPlantFocus = widget.activePlant!);
     }
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _sendMessage([String? customPrompt]) async {
@@ -107,7 +116,8 @@ class _ChatScreenState extends State<ChatScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isWide = MediaQuery.of(context).size.width >= 800;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 800;
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
     final subtle = NeuTheme.subtleText(context);
@@ -123,14 +133,14 @@ class _ChatScreenState extends State<ChatScreen>
           children: [
             // ── Top Bar: Plant Selector & Actions ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
               child: NeuInsetContainer(
                 borderRadius: 18,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                 child: Row(
                   children: [
                     Icon(Icons.filter_alt_outlined, color: primary, size: 20),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
@@ -160,18 +170,19 @@ class _ChatScreenState extends State<ChatScreen>
                       ),
                     ),
                     if (_messages.isNotEmpty) ...[
+                      const SizedBox(width: 4),
                       NeuIconButton(
                         icon: Icons.share,
-                        size: 38,
+                        size: 34,
                         iconColor: primary,
                         tooltip: isBn ? "চ্যাট এক্সপোর্ট" : "Export Transcript",
                         onPressed: _exportChat,
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 4),
                       NeuIconButton(
                         icon: Icons.delete_outline,
                         onPressed: _clearChat,
-                        size: 38,
+                        size: 34,
                         iconColor: Colors.redAccent,
                         tooltip: isBn ? "ইতিহাস মুছুন" : "Clear History",
                       ),
@@ -183,12 +194,12 @@ class _ChatScreenState extends State<ChatScreen>
 
             // ── Quick Prompt Chips ──
             SizedBox(
-              height: 50,
+              height: 46,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 children: [
-                  _buildNeuChip(isBn ? "প্রধান ব্যবহার ও নিরাময় কী?" : "What are primary indications?"),
+                  _buildNeuChip(isBn ? "প্রধান ব্যবহার ও রোগ নিরাময় কী?" : "What are primary indications?"),
                   _buildNeuChip(isBn ? "নিরাপত্তা ও পার্শ্বপ্রতিক্রিয়া?" : "Safety & contraindications?"),
                   _buildNeuChip(isBn ? "সঠিক মাত্রা ও অনুপান?" : "Standard dosage & anupana?"),
                   _buildNeuChip(isBn ? "সক্রিয় ফাইটোকেমিক্যালস?" : "Active phytochemicals?"),
@@ -198,10 +209,10 @@ class _ChatScreenState extends State<ChatScreen>
 
             // ── Chat Message List ──
             Expanded(
-              child: _messages.isEmpty
+              child: _messages.isEmpty && !_isGenerating
                   ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32.0),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(24.0),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -209,19 +220,20 @@ class _ChatScreenState extends State<ChatScreen>
                               borderRadius: 40,
                               padding: const EdgeInsets.all(24),
                               blurRadius: 20,
-                              child: Icon(Icons.forum_outlined, size: 48, color: primary.withValues(alpha: 0.5)),
+                              child: Icon(Icons.forum_outlined, size: 44, color: primary.withAlpha(140)),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 16),
                             Text(
                               isBn ? "ভেষজ উদ্ভিদ সম্পর্কে যেকোনো প্রশ্ন করুন" : "Ask about medicinal plants",
-                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: primary),
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: primary),
+                              textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 8),
                             Text(
                               isBn
-                                  ? "১০০% ভেক্টর ডাটাবেস ও এআই দ্বারা সমর্থিত"
+                                  ? "১০০% লোকাল ভেক্টর ডাটাবেস ও এআই দ্বারা সমর্থিত"
                                   : "Grounded in verified botanical & pharmacological vector database",
-                              style: TextStyle(fontSize: 13, color: subtle),
+                              style: TextStyle(fontSize: 12, color: subtle),
                               textAlign: TextAlign.center,
                             ),
                           ],
@@ -231,10 +243,42 @@ class _ChatScreenState extends State<ChatScreen>
                   : ListView.builder(
                       controller: _scrollController,
                       padding: const EdgeInsets.all(16),
-                      itemCount: _messages.length,
+                      itemCount: _messages.length + (_isGenerating ? 1 : 0),
                       itemBuilder: (context, idx) {
+                        // Dynamic Assistant Response Loading Card
+                        if (idx == _messages.length && _isGenerating) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14.0),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                NeuContainer(
+                                  borderRadius: 16,
+                                  padding: const EdgeInsets.all(8),
+                                  blurRadius: 6,
+                                  offset: const Offset(2, 2),
+                                  child: const Text("🌿", style: TextStyle(fontSize: 16)),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: BotanicalThinkingCard(
+                                    statusText: isBn
+                                        ? "ভেক্টর নলেজবেস ও এআই দ্বারা উত্তর তৈরি হচ্ছে..."
+                                        : "Searching RAG vector knowledge base & generating response...",
+                                    isBangla: isBn,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
                         final msg = _messages[idx];
                         final isUser = msg["role"] == "user";
+                        final maxBubbleWidth = isWide
+                            ? 680.0
+                            : math.max(160.0, screenWidth - (isUser ? 60.0 : 96.0));
+
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 14.0),
                           child: Row(
@@ -243,7 +287,7 @@ class _ChatScreenState extends State<ChatScreen>
                             children: [
                               if (!isUser) ...[
                                 NeuContainer(
-                                  borderRadius: 20,
+                                  borderRadius: 16,
                                   padding: const EdgeInsets.all(8),
                                   blurRadius: 6,
                                   offset: const Offset(2, 2),
@@ -252,17 +296,15 @@ class _ChatScreenState extends State<ChatScreen>
                                 const SizedBox(width: 10),
                               ],
                               ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxWidth: isWide ? 680 : MediaQuery.of(context).size.width * 0.78,
-                                ),
+                                constraints: BoxConstraints(maxWidth: maxBubbleWidth),
                                 child: NeuContainer(
                                   isPressed: isUser,
                                   borderRadius: 18,
                                   padding: const EdgeInsets.all(14),
-                                  blurRadius: isUser ? 8 : 14,
-                                  offset: const Offset(4, 4),
+                                  blurRadius: isUser ? 6 : 12,
+                                  offset: const Offset(3, 3),
                                   color: isUser
-                                      ? NeuTheme.primaryColor(context).withValues(alpha: 0.12)
+                                      ? primary.withAlpha(28)
                                       : null,
                                   child: isUser
                                       ? SelectableText(
@@ -274,9 +316,9 @@ class _ChatScreenState extends State<ChatScreen>
                                           selectable: true,
                                           styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
                                             p: TextStyle(height: 1.5, fontSize: 14, color: onSurf),
-                                            h1: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: primary),
-                                            h2: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: primary),
-                                            h3: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primary),
+                                            h1: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: primary),
+                                            h2: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: primary),
+                                            h3: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: primary),
                                             strong: TextStyle(fontWeight: FontWeight.bold, color: onSurf),
                                             listBullet: TextStyle(fontWeight: FontWeight.bold, color: primary),
                                           ),
@@ -290,61 +332,41 @@ class _ChatScreenState extends State<ChatScreen>
                     ),
             ),
 
-            // ── Loading Indicator ──
-            if (_isGenerating)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                child: NeuInsetContainer(
-                  borderRadius: 14,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(
-                    children: [
-                      SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: primary)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          isBn ? "ভেক্টর ডাটাবেস সার্চ ও উত্তর তৈরি হচ্ছে..." : "Searching RAG vector knowledge base...",
-                          style: TextStyle(fontSize: 12, color: subtle),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
             // ── Input Field ──
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: NeuInsetContainer(
-                      borderRadius: 22,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
-                      child: TextField(
-                        controller: _textController,
-                        decoration: InputDecoration(
-                          hintText: isBn
-                              ? "${_loc.getPlantDisplayName(_selectedPlantFocus)} সম্পর্কে প্রশ্ন লিখুন..."
-                              : "Ask about $_selectedPlantFocus...",
-                          hintStyle: TextStyle(color: subtle, fontSize: 13),
-                          border: InputBorder.none,
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: NeuInsetContainer(
+                        borderRadius: 22,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                        child: TextField(
+                          controller: _textController,
+                          decoration: InputDecoration(
+                            hintText: isBn
+                                ? "${_loc.getPlantDisplayName(_selectedPlantFocus)} সম্পর্কে প্রশ্ন লিখুন..."
+                                : "Ask about $_selectedPlantFocus...",
+                            hintStyle: TextStyle(color: subtle, fontSize: 13),
+                            border: InputBorder.none,
+                          ),
+                          style: TextStyle(color: onSurf, fontSize: 14),
+                          onSubmitted: (_) => _sendMessage(),
                         ),
-                        style: TextStyle(color: onSurf, fontSize: 14),
-                        onSubmitted: (_) => _sendMessage(),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  NeuIconButton(
-                    icon: Icons.send,
-                    onPressed: _isGenerating ? null : () => _sendMessage(),
-                    iconColor: _isGenerating ? subtle : primary,
-                    size: 48,
-                    tooltip: isBn ? "পাঠান" : "Send",
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    NeuIconButton(
+                      icon: Icons.send,
+                      onPressed: _isGenerating ? null : () => _sendMessage(),
+                      iconColor: _isGenerating ? subtle : primary,
+                      size: 44,
+                      tooltip: isBn ? "পাঠান" : "Send",
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -358,20 +380,23 @@ class _ChatScreenState extends State<ChatScreen>
     final onSurf = NeuTheme.onSurface(context);
 
     return Padding(
-      padding: const EdgeInsets.only(right: 10.0),
+      padding: const EdgeInsets.only(right: 8.0),
       child: GestureDetector(
         onTap: () => _sendMessage(label),
         child: NeuContainer(
           borderRadius: 14,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          blurRadius: 8,
-          offset: const Offset(3, 3),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          blurRadius: 6,
+          offset: const Offset(2, 2),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.bolt, size: 14, color: primary),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: onSurf)),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: onSurf),
+              ),
             ],
           ),
         ),

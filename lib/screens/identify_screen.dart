@@ -11,6 +11,7 @@ import '../services/localization_service.dart';
 import '../services/rag_service.dart';
 import '../services/onnx_service.dart';
 import '../widgets/export_dialog.dart';
+import '../widgets/botanical_loader.dart';
 import '../widgets/image_editor_dialog.dart';
 import '../widgets/neu_widgets.dart';
 import '../widgets/quality_badge_widget.dart';
@@ -607,7 +608,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
         borderRadius: 24,
         child: Column(
           children: [
-            CircularProgressIndicator(color: primary),
+            BotanicalLoader(size: 52, color: primary),
             const SizedBox(height: 14),
             Text(
               isBn
@@ -758,7 +759,7 @@ class _IdentifyScreenState extends State<IdentifyScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: primary)),
+                BotanicalLoaderInline(size: 20, color: primary),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(

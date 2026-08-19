@@ -5,6 +5,7 @@ import 'models/app_locale.dart';
 import 'services/history_service.dart';
 import 'services/localization_service.dart';
 import 'services/rag_service.dart';
+import 'services/theme_service.dart';
 import 'screens/clinical_hub_screen.dart';
 import 'screens/identify_screen.dart';
 import 'screens/chat_screen.dart';
@@ -16,6 +17,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LocalizationService().init();
   await HistoryService().init();
+  await ThemeService().init();
   runApp(const PlantIdentificationApp());
 }
 
@@ -24,137 +26,142 @@ class PlantIdentificationApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<AppLanguage>(
-      valueListenable: LocalizationService().currentLanguage,
-      builder: (context, lang, _) {
-        return MaterialApp(
-          title: lang == AppLanguage.bangla
-              ? 'ভেষজ উদ্ভিদ শনাক্তকরণ ও ক্লিনিক্যাল RAG'
-              : 'Medicinal Plant ID & Clinical RAG',
-          debugShowCheckedModeBanner: false,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService().themeModeNotifier,
+      builder: (context, currentThemeMode, _) {
+        return ValueListenableBuilder<AppLanguage>(
+          valueListenable: LocalizationService().currentLanguage,
+          builder: (context, lang, _) {
+            return MaterialApp(
+              title: lang == AppLanguage.bangla
+                  ? 'ভেষজ উদ্ভিদ শনাক্তকরণ ও ক্লিনিক্যাল RAG'
+                  : 'Medicinal Plant ID & Clinical RAG',
+              debugShowCheckedModeBanner: false,
 
-          // ── Neumorphism Light Theme (Botanical Sage Green) ──
-          theme: ThemeData(
-            useMaterial3: true,
-            brightness: Brightness.light,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: NeuTheme.lightPrimary,
-              brightness: Brightness.light,
-              primary: NeuTheme.lightPrimary,
-              surface: NeuTheme.lightBg,
-              onSurface: NeuTheme.lightOnSurface,
-            ),
-            scaffoldBackgroundColor: NeuTheme.lightBg,
-            appBarTheme: AppBarTheme(
-              centerTitle: true,
-              backgroundColor: NeuTheme.lightBg,
-              foregroundColor: NeuTheme.lightOnSurface,
-              elevation: 0,
-              surfaceTintColor: Colors.transparent,
-              titleTextStyle: const TextStyle(
-                color: NeuTheme.lightOnSurface,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-              ),
-            ),
-            navigationRailTheme: NavigationRailThemeData(
-              backgroundColor: NeuTheme.lightBg,
-              selectedIconTheme: const IconThemeData(color: NeuTheme.lightPrimary),
-              unselectedIconTheme: IconThemeData(color: NeuTheme.lightOnSurface.withValues(alpha: 0.5)),
-              selectedLabelTextStyle: const TextStyle(
-                color: NeuTheme.lightPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 11,
-              ),
-              unselectedLabelTextStyle: TextStyle(
-                color: NeuTheme.lightOnSurface.withValues(alpha: 0.5),
-                fontSize: 11,
-              ),
-            ),
-            navigationBarTheme: NavigationBarThemeData(
-              backgroundColor: NeuTheme.lightBg,
-              indicatorColor: NeuTheme.lightPrimary.withValues(alpha: 0.18),
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.selected)) {
-                  return const TextStyle(
+              // ── Neumorphism Light Theme (Botanical Sage Green) ──
+              theme: ThemeData(
+                useMaterial3: true,
+                brightness: Brightness.light,
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: NeuTheme.lightPrimary,
+                  brightness: Brightness.light,
+                  primary: NeuTheme.lightPrimary,
+                  surface: NeuTheme.lightBg,
+                  onSurface: NeuTheme.lightOnSurface,
+                ),
+                scaffoldBackgroundColor: NeuTheme.lightBg,
+                appBarTheme: AppBarTheme(
+                  centerTitle: true,
+                  backgroundColor: NeuTheme.lightBg,
+                  foregroundColor: NeuTheme.lightOnSurface,
+                  elevation: 0,
+                  surfaceTintColor: Colors.transparent,
+                  titleTextStyle: const TextStyle(
+                    color: NeuTheme.lightOnSurface,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                navigationRailTheme: NavigationRailThemeData(
+                  backgroundColor: NeuTheme.lightBg,
+                  selectedIconTheme: const IconThemeData(color: NeuTheme.lightPrimary),
+                  unselectedIconTheme: IconThemeData(color: NeuTheme.lightOnSurface.withValues(alpha: 0.5)),
+                  selectedLabelTextStyle: const TextStyle(
                     color: NeuTheme.lightPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
-                  );
-                }
-                return TextStyle(
-                  color: NeuTheme.lightOnSurface.withValues(alpha: 0.5),
-                  fontSize: 11,
-                );
-              }),
-            ),
-          ),
+                  ),
+                  unselectedLabelTextStyle: TextStyle(
+                    color: NeuTheme.lightOnSurface.withValues(alpha: 0.5),
+                    fontSize: 11,
+                  ),
+                ),
+                navigationBarTheme: NavigationBarThemeData(
+                  backgroundColor: NeuTheme.lightBg,
+                  indicatorColor: NeuTheme.lightPrimary.withValues(alpha: 0.18),
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 0,
+                  labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return const TextStyle(
+                        color: NeuTheme.lightPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      );
+                    }
+                    return TextStyle(
+                      color: NeuTheme.lightOnSurface.withValues(alpha: 0.5),
+                      fontSize: 11,
+                    );
+                  }),
+                ),
+              ),
 
-          // ── Neumorphism Dark Theme (Deep Rainforest Green) ──
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            brightness: Brightness.dark,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: NeuTheme.darkPrimary,
-              brightness: Brightness.dark,
-              primary: NeuTheme.darkPrimary,
-              surface: NeuTheme.darkBg,
-              onSurface: NeuTheme.darkOnSurface,
-            ),
-            scaffoldBackgroundColor: NeuTheme.darkBg,
-            appBarTheme: AppBarTheme(
-              centerTitle: true,
-              backgroundColor: NeuTheme.darkBg,
-              foregroundColor: NeuTheme.darkOnSurface,
-              elevation: 0,
-              surfaceTintColor: Colors.transparent,
-              titleTextStyle: const TextStyle(
-                color: NeuTheme.darkOnSurface,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
-              ),
-            ),
-            navigationRailTheme: NavigationRailThemeData(
-              backgroundColor: NeuTheme.darkBg,
-              selectedIconTheme: const IconThemeData(color: NeuTheme.darkPrimary),
-              unselectedIconTheme: IconThemeData(color: NeuTheme.darkOnSurface.withValues(alpha: 0.4)),
-              selectedLabelTextStyle: const TextStyle(
-                color: NeuTheme.darkPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 11,
-              ),
-              unselectedLabelTextStyle: TextStyle(
-                color: NeuTheme.darkOnSurface.withValues(alpha: 0.4),
-                fontSize: 11,
-              ),
-            ),
-            navigationBarTheme: NavigationBarThemeData(
-              backgroundColor: NeuTheme.darkBg,
-              indicatorColor: NeuTheme.darkPrimary.withValues(alpha: 0.18),
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.selected)) {
-                  return const TextStyle(
+              // ── Neumorphism Dark Theme (Deep Rainforest Green) ──
+              darkTheme: ThemeData(
+                useMaterial3: true,
+                brightness: Brightness.dark,
+                colorScheme: ColorScheme.fromSeed(
+                  seedColor: NeuTheme.darkPrimary,
+                  brightness: Brightness.dark,
+                  primary: NeuTheme.darkPrimary,
+                  surface: NeuTheme.darkBg,
+                  onSurface: NeuTheme.darkOnSurface,
+                ),
+                scaffoldBackgroundColor: NeuTheme.darkBg,
+                appBarTheme: AppBarTheme(
+                  centerTitle: true,
+                  backgroundColor: NeuTheme.darkBg,
+                  foregroundColor: NeuTheme.darkOnSurface,
+                  elevation: 0,
+                  surfaceTintColor: Colors.transparent,
+                  titleTextStyle: const TextStyle(
+                    color: NeuTheme.darkOnSurface,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                navigationRailTheme: NavigationRailThemeData(
+                  backgroundColor: NeuTheme.darkBg,
+                  selectedIconTheme: const IconThemeData(color: NeuTheme.darkPrimary),
+                  unselectedIconTheme: IconThemeData(color: NeuTheme.darkOnSurface.withValues(alpha: 0.4)),
+                  selectedLabelTextStyle: const TextStyle(
                     color: NeuTheme.darkPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 11,
-                  );
-                }
-                return TextStyle(
-                  color: NeuTheme.darkOnSurface.withValues(alpha: 0.4),
-                  fontSize: 11,
-                );
-              }),
-            ),
-          ),
+                  ),
+                  unselectedLabelTextStyle: TextStyle(
+                    color: NeuTheme.darkOnSurface.withValues(alpha: 0.4),
+                    fontSize: 11,
+                  ),
+                ),
+                navigationBarTheme: NavigationBarThemeData(
+                  backgroundColor: NeuTheme.darkBg,
+                  indicatorColor: NeuTheme.darkPrimary.withValues(alpha: 0.18),
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 0,
+                  labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return const TextStyle(
+                        color: NeuTheme.darkPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      );
+                    }
+                    return TextStyle(
+                      color: NeuTheme.darkOnSurface.withValues(alpha: 0.4),
+                      fontSize: 11,
+                    );
+                  }),
+                ),
+              ),
 
-          themeMode: ThemeMode.system,
-          home: const MainHomeScreen(),
+              themeMode: currentThemeMode,
+              home: const MainHomeScreen(),
+            );
+          },
         );
       },
     );
@@ -172,6 +179,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   int _currentIndex = 0;
   final RagService _ragService = RagService();
   final LocalizationService _loc = LocalizationService();
+  final ThemeService _themeService = ThemeService();
   String? _activePlantContext;
 
   void _onPlantIdentified(String plantName) {
@@ -235,6 +243,80 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       ),
     );
     return shouldExit ?? false;
+  }
+
+  void _showThemeSelector(BuildContext context) {
+    final isBn = _loc.isBangla;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: NeuTheme.surfaceColor(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
+                child: Text(
+                  isBn ? "🎨 থিম নির্বাচন করুন" : "🎨 Select Appearance Theme",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: NeuTheme.onSurface(context),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildThemeTile(ctx, ThemeMode.light, Icons.light_mode, isBn ? "লাইট মোড (Light Mode)" : "Light Mode", Colors.amber.shade700),
+              _buildThemeTile(ctx, ThemeMode.dark, Icons.dark_mode, isBn ? "ডার্ক মোড (Dark Mode)" : "Dark Mode", Colors.indigoAccent),
+              _buildThemeTile(ctx, ThemeMode.system, Icons.brightness_auto, isBn ? "সিস্টেম অটো (System Auto)" : "System Default", NeuTheme.primaryColor(context)),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildThemeTile(BuildContext ctx, ThemeMode mode, IconData icon, String title, Color iconColor) {
+    final isSelected = _themeService.themeModeNotifier.value == mode;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: GestureDetector(
+        onTap: () {
+          _themeService.setThemeMode(mode);
+          Navigator.of(ctx).pop();
+        },
+        child: NeuContainer(
+          isPressed: isSelected,
+          borderRadius: 16,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, color: iconColor, size: 22),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 14,
+                    color: NeuTheme.onSurface(context),
+                  ),
+                ),
+              ),
+              if (isSelected)
+                Icon(Icons.check_circle, color: NeuTheme.primaryColor(context), size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -375,6 +457,39 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             ],
           ),
           actions: [
+            // Theme Mode Selector (☀️ Light, 🌙 Dark, ⚙️ Auto)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: GestureDetector(
+                onTap: () => _showThemeSelector(context),
+                child: NeuContainer(
+                  borderRadius: 16,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  blurRadius: 4,
+                  offset: const Offset(2, 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _themeService.themeIcon,
+                        size: 16,
+                        color: NeuTheme.primaryColor(context),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _themeService.getThemeName(isBn),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: NeuTheme.onSurface(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
             // Bilingual Switcher Button (🇧🇩 বাংলা ↔ 🇬🇧 EN)
             Padding(
               padding: const EdgeInsets.only(right: 12.0),
