@@ -495,23 +495,33 @@ class _IdentifyScreenState extends State<IdentifyScreen>
           if (_activeImageBytes != null) ...[
             const SizedBox(height: 14),
 
-            // Image Preview + Grad-CAM Heatmap Overlay
-            ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Image.memory(
-                    _activeImageBytes!,
-                    height: 260,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                  if (_showGradCamOverlay && camGrid != null)
-                    Positioned.fill(
-                      child: CustomPaint(painter: GradCamHeatmapPainter(grid: camGrid)),
+            // Image Preview + Grad-CAM Heatmap Overlay with Proper Fit
+            Container(
+              constraints: const BoxConstraints(
+                minHeight: 200,
+                maxHeight: 380,
+              ),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: NeuTheme.shadowDark(context).withAlpha(35),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Image.memory(
+                      _activeImageBytes!,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
                     ),
-                ],
+                    if (_showGradCamOverlay && camGrid != null)
+                      Positioned.fill(
+                        child: CustomPaint(painter: GradCamHeatmapPainter(grid: camGrid)),
+                      ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -604,17 +614,29 @@ class _IdentifyScreenState extends State<IdentifyScreen>
 
     if (_isPredicting) {
       return NeuContainer(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         borderRadius: 24,
         child: Column(
           children: [
-            BotanicalLoader(size: 52, color: primary),
-            const SizedBox(height: 14),
+            BotanicalLoader(size: 64, color: primary),
+            const SizedBox(height: 18),
             Text(
               isBn
-                  ? "অন-ডিভাইস লোকাল ONNX মডেল দ্বারা বিশ্লেষণ চলছে..."
-                  : "Running on-device local ONNX inference & feature extraction...",
-              style: TextStyle(color: subtle, fontSize: 13),
+                  ? "🧠 ৩টি ডিপ লার্নিং মডেল দ্বারা পাতা বিশ্লেষণ চলছে..."
+                  : "🧠 Running Tri-Model AI Leaf Inference...",
+              style: TextStyle(
+                color: onSurf,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isBn
+                  ? "MobileNetV2, InceptionV3 এবং EfficientNetV2 ONNX লোকাল ভিশন ইঞ্জিন"
+                  : "Extracting morphological features via MobileNetV2, InceptionV3 & EfficientNetV2",
+              style: TextStyle(color: subtle, fontSize: 12),
               textAlign: TextAlign.center,
             ),
           ],
@@ -753,22 +775,26 @@ class _IdentifyScreenState extends State<IdentifyScreen>
         // Loading or Report Display
         if (_isLoadingReport)
           NeuContainer(
-            isPressed: true,
-            padding: const EdgeInsets.all(24),
-            borderRadius: 20,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            borderRadius: 22,
+            child: Column(
               children: [
-                BotanicalLoaderInline(size: 20, color: primary),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    isBn
-                        ? "${_loc.getPlantDisplayName(_selectedPlantName ?? '')} এর রিপোর্ট তৈরি হচ্ছে..."
-                        : "Generating report for $_selectedPlantName...",
-                    style: TextStyle(color: subtle, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                BotanicalLoader(size: 48, color: primary),
+                const SizedBox(height: 14),
+                Text(
+                  isBn
+                      ? "${_loc.getPlantDisplayName(_selectedPlantName ?? '')} এর ফার্মাকোলজিক্যাল রিপোর্ট তৈরি হচ্ছে..."
+                      : "Generating clinical report for $_selectedPlantName...",
+                  style: TextStyle(color: onSurf, fontWeight: FontWeight.bold, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  isBn
+                      ? "ভেষজ গুণাগুণ, সক্রিয় রাসায়নিক ও ক্লিনিক্যাল মনোগ্রাফ সংগ্রহ করা হচ্ছে..."
+                      : "Retrieving indications, active phytochemicals & safety monograph...",
+                  style: TextStyle(color: subtle, fontSize: 12),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),

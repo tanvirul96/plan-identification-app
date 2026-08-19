@@ -168,12 +168,18 @@ class _ImageEditorDialogState extends State<ImageEditorDialog> {
     final primary = NeuTheme.primaryColor(context);
     final onSurf = NeuTheme.onSurface(context);
 
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Dialog(
       backgroundColor: NeuTheme.surfaceColor(context),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 540, maxHeight: 720),
-        padding: const EdgeInsets.all(18),
+        constraints: BoxConstraints(
+          maxWidth: 540,
+          maxHeight: math.min(740.0, screenHeight * 0.90),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -184,12 +190,12 @@ class _ImageEditorDialogState extends State<ImageEditorDialog> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.crop_rotate, color: primary, size: 22),
+                    Icon(Icons.crop_rotate, color: primary, size: 20),
                     const SizedBox(width: 8),
                     Text(
                       isBn ? "ইন্টারেক্টিভ ছবি ক্রপ ও ঘোরান" : "Crop & Rotate Specimen",
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
                         color: onSurf,
                       ),
@@ -198,11 +204,13 @@ class _ImageEditorDialogState extends State<ImageEditorDialog> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, size: 20),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
 
             // Interactive Crop & Rotation Canvas Area
             Expanded(
@@ -309,7 +317,7 @@ class _ImageEditorDialogState extends State<ImageEditorDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
 
             // Rotation & Transform Action Bar
             Row(
@@ -317,28 +325,32 @@ class _ImageEditorDialogState extends State<ImageEditorDialog> {
               children: [
                 NeuIconButton(
                   icon: Icons.rotate_90_degrees_ccw,
+                  size: 38,
                   tooltip: isBn ? "বামে ৯০° ঘোরান" : "Rotate 90° CCW",
                   onPressed: _isProcessing ? null : () => _rotate(-90),
                 ),
                 NeuIconButton(
                   icon: Icons.rotate_90_degrees_cw,
+                  size: 38,
                   tooltip: isBn ? "ডানে ৯০° ঘোরান" : "Rotate 90° CW",
                   onPressed: _isProcessing ? null : () => _rotate(90),
                 ),
                 NeuIconButton(
                   icon: Icons.flip,
+                  size: 38,
                   tooltip: isBn ? "ফ্লিপ করুন" : "Flip Horizontal",
                   onPressed: _isProcessing ? null : _flip,
                 ),
                 NeuIconButton(
                   icon: Icons.restart_alt,
+                  size: 38,
                   iconColor: Colors.orange.shade700,
                   tooltip: isBn ? "রিসেট" : "Reset",
                   onPressed: _isProcessing ? null : _reset,
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
 
             // Aspect Ratio Selector Chips
             SingleChildScrollView(
@@ -357,7 +369,7 @@ class _ImageEditorDialogState extends State<ImageEditorDialog> {
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
 
             // Action Buttons (Cancel / Apply Crop)
             Row(
