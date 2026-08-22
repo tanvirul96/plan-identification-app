@@ -349,7 +349,7 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
                   Icon(Icons.calculate, color: primary, size: 22),
                   const SizedBox(width: 8),
                   Text(
-                    isBn ? "ভেষজ মাত্রা ও ডোজ ক্যালকুলেটর" : "Ayurvedic Dosage & Formulation Calc",
+                    isBn ? "ভেষজ মাত্রা ও ডোজ ক্যালকুলেটর" : "Dosage & Formulation Calc",
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: onSurf),
                   ),
                 ],
@@ -357,90 +357,55 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
               const SizedBox(height: 16),
 
               // Plant & Age Selector
-              Row(
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: Column(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 360;
+                  if (isNarrow) {
+                    return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(isBn ? "উদ্ভিদ নির্বাচন" : "Select Plant",
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
                         const SizedBox(height: 6),
-                        NeuInsetContainer(
-                          borderRadius: 14,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: plantOptions.contains(_selectedDosePlant) ? _selectedDosePlant : plantOptions.first,
-                              isExpanded: true,
-                              dropdownColor: NeuTheme.surfaceColor(context),
-                              items: plantOptions.map((p) {
-                                return DropdownMenuItem(
-                                  value: p,
-                                  child: Text(_loc.getPlantDisplayName(p),
-                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: onSurf)),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  _selectedDosePlant = val;
-                                  _recalculateDosage();
-                                }
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                        _buildPlantDropdown(plantOptions, onSurf),
+                        const SizedBox(height: 10),
                         Text(isBn ? "বয়সের ধরন" : "Patient Age",
                             style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
                         const SizedBox(height: 6),
-                        NeuInsetContainer(
-                          borderRadius: 14,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<PatientAgeGroup>(
-                              value: _selectedAgeGroup,
-                              isExpanded: true,
-                              dropdownColor: NeuTheme.surfaceColor(context),
-                              items: [
-                                DropdownMenuItem(
-                                  value: PatientAgeGroup.adult,
-                                  child: Text(isBn ? "প্রাপ্তবয়স্ক" : "Adult",
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
-                                ),
-                                DropdownMenuItem(
-                                  value: PatientAgeGroup.pediatric,
-                                  child: Text(isBn ? "শিশু (২-১২)" : "Pediatric",
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
-                                ),
-                                DropdownMenuItem(
-                                  value: PatientAgeGroup.geriatric,
-                                  child: Text(isBn ? "বয়োজ্যেষ্ঠ" : "Geriatric",
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  _selectedAgeGroup = val;
-                                  _recalculateDosage();
-                                }
-                              },
-                            ),
-                          ),
-                        ),
+                        _buildAgeDropdown(isBn, onSurf),
                       ],
-                    ),
-                  ),
-                ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(
+                        flex: 6,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(isBn ? "উদ্ভিদ নির্বাচন" : "Select Plant",
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
+                            const SizedBox(height: 6),
+                            _buildPlantDropdown(plantOptions, onSurf),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 4,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(isBn ? "বয়সের ধরন" : "Patient Age",
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
+                            const SizedBox(height: 6),
+                            _buildAgeDropdown(isBn, onSurf),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 14),
 
@@ -502,36 +467,51 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      isBn ? res.formulationNameBn : res.formulationNameEn,
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: primary),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isBn ? res.formulationNameBn : res.formulationNameEn,
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primary),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _loc.getPlantDisplayName(res.plantName),
+                            style: TextStyle(fontSize: 11, color: NeuTheme.subtleText(context)),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     NeuContainer(
                       isPressed: true,
                       borderRadius: 14,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       child: Text(
                         "${res.calculatedDoseAmount} ${res.unit}",
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: primary),
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primary),
                       ),
                     ),
                   ],
                 ),
-                Divider(height: 24, color: NeuTheme.shadowDark(context).withValues(alpha: 0.2)),
+                Divider(height: 20, color: NeuTheme.shadowDark(context).withValues(alpha: 0.2)),
                 _buildInfoRow(isBn ? "সেবন মাত্রা ও সময়" : "Frequency & Timing",
                     "${isBn ? res.frequencyBn : res.frequencyEn} • ${isBn ? res.timingBn : res.timingEn}", onSurf),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 _buildInfoRow(isBn ? "অনুপান (Carrier)" : "Vehicle (Anupana)",
                     isBn ? res.vehicleAnupanaBn : res.vehicleAnupanaEn, onSurf),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 _buildInfoRow(isBn ? "সর্বোচ্চ নিরাপদ সীমা" : "Safety Ceiling",
                     isBn ? res.safetyLimitBn : res.safetyLimitEn, onSurf,
                     isHighlight: true),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 ...(isBn ? res.clinicalNotesBn : res.clinicalNotesEn).map((n) => Padding(
-                      padding: const EdgeInsets.only(top: 4.0),
+                      padding: const EdgeInsets.only(top: 3.0),
                       child: Text("📌 $n",
                           style: TextStyle(fontSize: 11, color: NeuTheme.subtleText(context), height: 1.35)),
                     )),
@@ -539,6 +519,70 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildPlantDropdown(List<String> plantOptions, Color onSurf) {
+    return NeuInsetContainer(
+      borderRadius: 14,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: plantOptions.contains(_selectedDosePlant) ? _selectedDosePlant : plantOptions.first,
+          isExpanded: true,
+          dropdownColor: NeuTheme.surfaceColor(context),
+          items: plantOptions.map((p) {
+            return DropdownMenuItem(
+              value: p,
+              child: Text(_loc.getPlantDisplayName(p),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: onSurf)),
+            );
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) {
+              _selectedDosePlant = val;
+              _recalculateDosage();
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgeDropdown(bool isBn, Color onSurf) {
+    return NeuInsetContainer(
+      borderRadius: 14,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<PatientAgeGroup>(
+          value: _selectedAgeGroup,
+          isExpanded: true,
+          dropdownColor: NeuTheme.surfaceColor(context),
+          items: [
+            DropdownMenuItem(
+              value: PatientAgeGroup.adult,
+              child: Text(isBn ? "প্রাপ্তবয়স্ক" : "Adult",
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
+            ),
+            DropdownMenuItem(
+              value: PatientAgeGroup.pediatric,
+              child: Text(isBn ? "শিশু (২-১২)" : "Pediatric",
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
+            ),
+            DropdownMenuItem(
+              value: PatientAgeGroup.geriatric,
+              child: Text(isBn ? "বয়োজ্যেষ্ঠ" : "Geriatric",
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: onSurf)),
+            ),
+          ],
+          onChanged: (val) {
+            if (val != null) {
+              _selectedAgeGroup = val;
+              _recalculateDosage();
+            }
+          },
+        ),
+      ),
     );
   }
 
@@ -570,18 +614,21 @@ class _ClinicalHubScreenState extends State<ClinicalHubScreen>
 
   Widget _buildInfoRow(String label, String value, Color onSurf, {bool isHighlight = false}) {
     final primary = NeuTheme.primaryColor(context);
-    return RichText(
-      text: TextSpan(
-        style: TextStyle(
-          fontSize: 12,
-          color: isHighlight ? primary : onSurf,
-          height: 1.35,
-          fontWeight: isHighlight ? FontWeight.w600 : FontWeight.normal,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Text.rich(
+        TextSpan(
+          style: TextStyle(
+            fontSize: 12,
+            color: isHighlight ? primary : onSurf,
+            height: 1.4,
+            fontWeight: isHighlight ? FontWeight.w600 : FontWeight.normal,
+          ),
+          children: [
+            TextSpan(text: "$label: ", style: const TextStyle(fontWeight: FontWeight.bold)),
+            TextSpan(text: value),
+          ],
         ),
-        children: [
-          TextSpan(text: "$label: ", style: const TextStyle(fontWeight: FontWeight.bold)),
-          TextSpan(text: value),
-        ],
       ),
     );
   }
